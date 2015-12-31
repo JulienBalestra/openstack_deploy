@@ -1,0 +1,216 @@
+heat_template_version: 2014-10-16
+
+description: >
+  Build everything inside an empty tenant
+
+resources:
+  local_net:
+    type: OS::Neutron::Net
+    properties:
+      admin_state_up: True
+      name: 'local_net'
+      shared: False
+
+  local_sub:
+    type: OS::Neutron::Subnet
+    depends_on: [ local_net ]
+    properties:
+      name: "local_sub"
+      cidr: {get_param: local_sub_cidr}
+      network: {get_resource: local_net}
+      allocation_pools: [{"start" : {get_param: local_sub_start}, "end" : {get_param: local_sub_end}}]
+      dns_nameservers: {get_param: dns_nameservers}
+      enable_dhcp: True
+      gateway_ip: {get_param: local_gateway}
+      ip_version: 4
+
+  local_router:
+    type: OS::Neutron::Router
+    depends_on: [ local_sub ]
+    properties:
+      name: local_router
+      admin_state_up: True
+      external_gateway_info: {"network": {get_param: floatingip_network_name}}
+
+  local_inet:
+    type: OS::Neutron::RouterInterface
+    depends_on: [ local_router ]
+    properties:
+      router_id: { get_resource: local_router }
+      subnet: { get_resource: local_sub }
+
+  consul_sg:
+      type: OS::Neutron::SecurityGroup
+      properties:
+        name: 'consul'
+        rules:
+          - remote_ip_prefix: {get_param: local_sub_cidr}
+            protocol: tcp
+            port_range_min: 22
+            port_range_max: 22
+            direction: ingress
+          - remote_ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            port_range_min: 80
+            port_range_max: 80
+            direction: ingress
+          - remote_ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            port_range_min: 443
+            port_range_max: 443
+            direction: ingress
+          - remote_ip_prefix: {get_param: local_sub_cidr}
+            protocol: tcp
+            port_range_min: 8300
+            port_range_max: 8301
+            direction: ingress
+          - remote_ip_prefix: 0.0.0.0/0
+            protocol: icmp
+            direction: ingress
+
+  bastion_sg:
+      type: OS::Neutron::SecurityGroup
+      properties:
+        name: 'bastion'
+        rules:
+          - remote_ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            port_range_min: 22
+            port_range_max: 22
+            direction: ingress
+          - remote_ip_prefix: 0.0.0.0/0
+            protocol: icmp
+            direction: ingress
+
+  consul_anti:
+    type: OS::Nova::ServerGroup
+    properties:
+      name: consul_anti
+      policies: ["anti-affinity"] # Beware about the number of compute nodes
+
+  bastion_anti:
+    type: OS::Nova::ServerGroup
+    properties:
+      name: bastion_anti
+      policies: ["anti-affinity"] # Beware about the number of compute nodes
+
+  bastion_group:
+    depends_on: [ local_inet, bastion_anti, bastion_sg, bastion_userdata ]
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: 2
+      resource_def:
+        type: instance_with_fip.yaml
+        properties:
+          key_name: { get_param: key_name }
+          anti_affinity: { get_resource: bastion_anti }
+          security_group: { get_resource: bastion_sg }
+          local_net: { get_resource: local_net }
+          local_sub: { get_resource: local_sub }
+          userdata: { get_resource: bastion_userdata }
+          flavor: { get_param: flavor }
+          image: { get_param: image }
+          floatingip_network_name: { get_param: floatingip_network_name }
+          instance_name: bastion_%index%
+
+  consul_scale:
+    depends_on: [ local_inet, consul_anti, consul_sg, consul_userdata ]
+    type: OS::Heat::AutoScalingGroup
+    properties:
+      min_size: 3
+      max_size: 7
+      rolling_updates: {"max_batch_size": 1, "min_in_service": 2, "pause_time": 60}
+      resource:
+        type: instance_with_fip.yaml
+        properties:
+          key_name: { get_param: key_name }
+          anti_affinity: { get_resource: consul_anti }
+          security_group: { get_resource: consul_sg }
+          local_net: { get_resource: local_net }
+          local_sub: { get_resource: local_sub }
+          userdata: { get_resource: consul_userdata }
+          flavor: { get_param: flavor }
+          image: { get_param: image }
+          floatingip_network_name: { get_param: floatingip_network_name }
+          instance_name: "consul"
+
+  scale_up:
+    depends_on: [ consul_scale ]
+    type: OS::Heat::ScalingPolicy
+    properties:
+      adjustment_type: change_in_capacity
+      auto_scaling_group_id: {get_resource: consul_scale}
+      cooldown: 60
+      scaling_adjustment: 1
+
+  scale_down:
+    depends_on: [ consul_scale ]
+    type: OS::Heat::ScalingPolicy
+    properties:
+      adjustment_type: change_in_capacity
+      auto_scaling_group_id: {get_resource: consul_scale}
+      cooldown: 120
+      scaling_adjustment: -1
+
+  consul_userdata:
+    type: OS::Heat::CloudConfig
+    properties:
+      cloud_config:
+        runcmd:
+          - [ curl, --insecure, {get_param: consul_bin}, -o, /usr/bin/consul ]
+          - [ chmod, 755, /usr/bin/consul ]
+
+  bastion_userdata:
+    type: OS::Heat::CloudConfig
+    properties:
+      cloud_config:
+        runcmd:
+          - [ echo, "hello_world" ]
+
+parameters:
+  key_name:
+    type: string
+    label: Name of keypair to assign to servers
+    description: key_name=foo
+  consul_bin:
+    type: string
+    label: Url of consul binary
+    description: consul_bin=https://{SWIFT}/consul/consul
+  local_sub_cidr:
+    type: string
+    default: "192.168.1.0/24"
+  local_sub_start:
+    type: string
+    default: "192.168.1.100"
+  local_sub_end:
+    type: string
+    default: "192.168.1.200"
+  local_gateway:
+    type: string
+    default: "192.168.1.254"
+  dns_nameservers:
+    type: comma_delimited_list
+    label: DNS nameservers
+    description: dns_nameservers=8.8.8.8,8.8.4.4
+  floatingip_network_name:
+    type: string
+    label: The Floating IP network for NAT
+    description: floatingip_network_name=public-net
+    default: "ext-net"
+  flavor:
+    type: string
+    default: "m1.small"
+    label: The flavor for AutoScaling Instances
+    description: flavor=m1.medium
+  image:
+    type: string
+    label: The debian image based for AutoScaling Instances
+    description: image=debian-8-2016-01-01
+
+outputs:
+  scale_up:
+    value:
+      - {get_attr: [scale_up, alarm_url]}
+  scale_down:
+    value:
+      - {get_attr: [scale_down, alarm_url]}
