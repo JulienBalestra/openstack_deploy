@@ -54,7 +54,7 @@ resources:
             port_range_min: 8000
             port_range_max: 8000
             direction: ingress
-          - remote_ip_prefix: 0.0.0.0/0
+          - remote_ip_prefix: {get_param: local_sub_cidr}
             protocol: icmp
             direction: ingress
 
@@ -146,7 +146,10 @@ resources:
     properties:
       cloud_config:
         runcmd:
-          - [ echo, "hello_world" ]
+          - [ apt-get, update]
+          - [ apt-get, install, curl]
+          - [ curl, { get_param: app_script }, -o, /tmp/app_script.sh ]
+          - [ /tmp/app_script.sh ]
 
   bastion_userdata:
     type: OS::Heat::CloudConfig
@@ -156,6 +159,11 @@ resources:
           - [ echo, "hello_world" ]
 
 parameters:
+  app_script:
+    type: string
+    label: Script for deploy the app with cloud-init
+    description: Github script
+    default: "https://raw.githubusercontent.com/JulienBalestra/computor/master/sysadmin/install.sh"
   key_name:
     type: string
     label: Name of keypair to assign to servers
