@@ -39,30 +39,20 @@ resources:
       router_id: { get_resource: local_router }
       subnet: { get_resource: local_sub }
 
-  consul_sg:
+  computor_sg:
       type: OS::Neutron::SecurityGroup
       properties:
-        name: 'consul'
+        name: 'computor'
         rules:
           - remote_ip_prefix: {get_param: local_sub_cidr}
             protocol: tcp
             port_range_min: 22
             port_range_max: 22
             direction: ingress
-          - remote_ip_prefix: 0.0.0.0/0
-            protocol: tcp
-            port_range_min: 80
-            port_range_max: 80
-            direction: ingress
-          - remote_ip_prefix: 0.0.0.0/0
-            protocol: tcp
-            port_range_min: 443
-            port_range_max: 443
-            direction: ingress
           - remote_ip_prefix: {get_param: local_sub_cidr}
             protocol: tcp
-            port_range_min: 8300
-            port_range_max: 8301
+            port_range_min: 8000
+            port_range_max: 8000
             direction: ingress
           - remote_ip_prefix: 0.0.0.0/0
             protocol: icmp
@@ -82,10 +72,10 @@ resources:
             protocol: icmp
             direction: ingress
 
-  consul_anti:
+  computor_anti:
     type: OS::Nova::ServerGroup
     properties:
-      name: consul_anti
+      name: computor_anti
       policies: ["anti-affinity"] # Beware about the number of compute nodes
 
   bastion_anti:
@@ -98,9 +88,9 @@ resources:
     depends_on: [ local_inet, bastion_anti, bastion_sg, bastion_userdata ]
     type: OS::Heat::ResourceGroup
     properties:
-      count: 2
+      count: 1
       resource_def:
-        type: instance_with_fip.yaml
+        type: bastion_instance.yaml
         properties:
           key_name: { get_param: key_name }
           anti_affinity: { get_resource: bastion_anti }
@@ -113,52 +103,50 @@ resources:
           floatingip_network_name: { get_param: floatingip_network_name }
           instance_name: bastion_%index%
 
-  consul_scale:
-    depends_on: [ local_inet, consul_anti, consul_sg, consul_userdata ]
+  computor_scale:
+    depends_on: [ local_inet, computor_anti, computor_sg, computor_userdata ]
     type: OS::Heat::AutoScalingGroup
     properties:
-      min_size: 3
-      max_size: 7
+      min_size: 2
+      max_size: 10
       rolling_updates: {"max_batch_size": 1, "min_in_service": 2, "pause_time": 60}
       resource:
-        type: instance_with_fip.yaml
+        type: computor_instance.yaml
         properties:
           key_name: { get_param: key_name }
-          anti_affinity: { get_resource: consul_anti }
-          security_group: { get_resource: consul_sg }
+          anti_affinity: { get_resource: computor_anti }
+          security_group: { get_resource: computor_sg }
           local_net: { get_resource: local_net }
           local_sub: { get_resource: local_sub }
-          userdata: { get_resource: consul_userdata }
+          userdata: { get_resource: computor_userdata }
           flavor: { get_param: flavor }
           image: { get_param: image }
-          floatingip_network_name: { get_param: floatingip_network_name }
-          instance_name: "consul"
+          instance_name: "computor"
 
   scale_up:
-    depends_on: [ consul_scale ]
+    depends_on: [ computor_scale ]
     type: OS::Heat::ScalingPolicy
     properties:
       adjustment_type: change_in_capacity
-      auto_scaling_group_id: {get_resource: consul_scale}
+      auto_scaling_group_id: {get_resource: computor_scale}
       cooldown: 60
       scaling_adjustment: 1
 
   scale_down:
-    depends_on: [ consul_scale ]
+    depends_on: [ computor_scale ]
     type: OS::Heat::ScalingPolicy
     properties:
       adjustment_type: change_in_capacity
-      auto_scaling_group_id: {get_resource: consul_scale}
+      auto_scaling_group_id: {get_resource: computor_scale}
       cooldown: 120
       scaling_adjustment: -1
 
-  consul_userdata:
+  computor_userdata:
     type: OS::Heat::CloudConfig
     properties:
       cloud_config:
         runcmd:
-          - [ curl, --insecure, {get_param: consul_bin}, -o, /usr/bin/consul ]
-          - [ chmod, 755, /usr/bin/consul ]
+          - [ echo, "hello_world" ]
 
   bastion_userdata:
     type: OS::Heat::CloudConfig
@@ -172,10 +160,6 @@ parameters:
     type: string
     label: Name of keypair to assign to servers
     description: key_name=foo
-  consul_bin:
-    type: string
-    label: Url of consul binary
-    description: consul_bin=https://{SWIFT}/consul/consul
   local_sub_cidr:
     type: string
     default: "192.168.1.0/24"
@@ -195,16 +179,15 @@ parameters:
   floatingip_network_name:
     type: string
     label: The Floating IP network for NAT
-    description: floatingip_network_name=public-net
+    description: floatingip_network_name=public
     default: "ext-net"
   flavor:
     type: string
-    default: "m1.small"
-    label: The flavor for AutoScaling Instances
+    label: The flavor for Instances
     description: flavor=m1.medium
   image:
     type: string
-    label: The debian image based for AutoScaling Instances
+    label: The debian image based for Instances
     description: image=debian-8-2016-01-01
 
 outputs:
