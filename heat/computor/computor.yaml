@@ -103,8 +103,32 @@ resources:
           floatingip_network_name: { get_param: floatingip_network_name }
           instance_name: bastion_%index%
 
+  pool:
+    depends_on: [ local_sub ]
+    type: OS::Neutron::Pool
+    properties:
+      protocol: HTTP
+      subnet_id: {get_resource: local_sub}
+      lb_method: ROUND_ROBIN
+      vip:
+        protocol_port: 80
+
+  lb:
+    depends_on: [ pool ]
+    type: OS::Neutron::LoadBalancer
+    properties:
+      protocol_port: 80
+      pool_id: {get_resource: pool}
+
+  lb_floating:
+    depends_on: [ pool ]
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: floatingip_network_name }
+      port_id: {get_attr: [pool, vip, port_id]}
+
   computor_scale:
-    depends_on: [ local_inet, computor_anti, computor_sg, computor_userdata ]
+    depends_on: [ local_inet, computor_anti, computor_sg, computor_userdata, pool ]
     type: OS::Heat::AutoScalingGroup
     properties:
       min_size: 2
@@ -121,6 +145,7 @@ resources:
           userdata: { get_resource: computor_userdata }
           flavor: { get_param: flavor }
           image: { get_param: image }
+          pool_id: {get_resource: pool}
 
   scale_up:
     depends_on: [ computor_scale ]
@@ -204,3 +229,6 @@ outputs:
   scale_down:
     value:
       - {get_attr: [scale_down, alarm_url]}
+  lb_app:
+    value:
+      - { get_attr: [lb_floating, floating_ip_address] }
