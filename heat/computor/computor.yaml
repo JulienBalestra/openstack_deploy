@@ -121,7 +121,6 @@ resources:
           userdata: { get_resource: computor_userdata }
           flavor: { get_param: flavor }
           image: { get_param: image }
-          instance_name: "computor"
 
   scale_up:
     depends_on: [ computor_scale ]
