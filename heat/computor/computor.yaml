@@ -170,10 +170,14 @@ resources:
     properties:
       cloud_config:
         runcmd:
-          - [ apt-get, update]
-          - [ apt-get, install, curl]
-          - [ curl, { get_param: app_script }, -o, /tmp/app_script.sh ]
-          - [ /tmp/app_script.sh ]
+          - [ apt-get, update, -qq]
+          - [ apt-get, upgrade, -qqy]
+          - [ curl, { get_param: app_install }, -o, /tmp/app_install.sh ]
+          - [ chmod, 777, /tmp/app_install.sh]
+          - [ /tmp/app_install.sh ]
+          - [ curl, { get_param: app_launch }, -o, /tmp/app_launch.sh ]
+          - [ chmod, 777, /tmp/app_launch.sh]
+          - [ /tmp/app_launch.sh ]
 
   bastion_userdata:
     type: OS::Heat::CloudConfig
@@ -183,11 +187,16 @@ resources:
           - [ echo, "hello_world" ]
 
 parameters:
-  app_script:
+  app_install:
     type: string
     label: Script for deploy the app with cloud-init
     description: Github script
     default: "https://raw.githubusercontent.com/JulienBalestra/computor/master/sysadmin/install.sh"
+  app_launch:
+    type: string
+    label: Script for deploy the app with cloud-init
+    description: Github script
+    default: "https://raw.githubusercontent.com/JulienBalestra/computor/master/sysadmin/launch.sh"
   key_name:
     type: string
     label: Name of keypair to assign to servers
