@@ -172,7 +172,6 @@ resources:
         runcmd:
           - [ apt-get, update]
           - [ apt-get, install, curl]
-          - [ apt-get, install, apache2]
           - [ curl, { get_param: app_script }, -o, /tmp/app_script.sh ]
           - [ /tmp/app_script.sh ]
 
