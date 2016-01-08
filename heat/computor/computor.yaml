@@ -174,10 +174,10 @@ resources:
           - [ apt-get, update, -qq]
           - [ apt-get, upgrade, -qqy]
           - [ curl, { get_param: app_install }, -o, /tmp/app_install.sh ]
-          - [ chmod, 777, /tmp/app_install.sh]
-          - [ /tmp/app_install.sh ]
           - [ curl, { get_param: app_launch }, -o, /tmp/app_launch.sh ]
-          - [ chmod, 777, /tmp/app_launch.sh]
+          - [ chmod, 755, /tmp/app_install.sh]
+          - [ chmod, 755, /tmp/app_launch.sh]
+          - [ /tmp/app_install.sh ]
           - [ /tmp/app_launch.sh ]
 
   bastion_userdata:
