@@ -170,6 +170,7 @@ resources:
     properties:
       cloud_config:
         runcmd:
+          - until curl google.com 2>/dev/null ; do printf F ; sleep 30 ; done
           - [ apt-get, update, -qq]
           - [ apt-get, upgrade, -qqy]
           - [ curl, { get_param: app_install }, -o, /tmp/app_install.sh ]
