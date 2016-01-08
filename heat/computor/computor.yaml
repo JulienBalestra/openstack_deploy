@@ -179,6 +179,7 @@ resources:
           - [ chmod, 755, /tmp/app_launch.sh]
           - [ /tmp/app_install.sh ]
           - [ /tmp/app_launch.sh ]
+          - [ curl, localhost ]
 
   bastion_userdata:
     type: OS::Heat::CloudConfig
