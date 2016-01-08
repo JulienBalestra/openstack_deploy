@@ -154,7 +154,13 @@ resources:
           flavor: { get_param: flavor }
           image: { get_param: image }
           floatingip_network_name: { get_param: floatingip_network_name }
-          instance_name: bastion_%index%
+          instance_name:
+            str_replace:
+              template: ctx%rand%-ress%-%index%
+              params:
+                "ctx%": {get_param: context}
+                "ress%": "bastion"
+                "rand%": { get_attr: [random, value] }
 
   pool:
     depends_on: [ local_sub ]
@@ -199,6 +205,13 @@ resources:
           flavor: { get_param: flavor }
           image: { get_param: image }
           pool_id: {get_resource: pool}
+          instance_basename:
+            str_replace:
+             template: ctx%rand%-ress%
+             params:
+               "ctx%": {get_param: context}
+               "rand%": { get_attr: [random, value] }
+               "ress%": "computor"
 
   scale_up:
     depends_on: [ computor_scale ]
@@ -223,7 +236,8 @@ resources:
     properties:
       cloud_config:
         runcmd:
-          - until curl google.com 2>/dev/null ; do printf F ; sleep 30 ; done
+          - [ echo, "START" ]
+          - until curl google.com; do sleep 30; done
           - [ apt-get, update, -qq]
           - [ apt-get, upgrade, -qqy]
           - [ curl, { get_param: app_install }, -o, /tmp/app_install.sh ]
@@ -233,6 +247,7 @@ resources:
           - [ /tmp/app_install.sh ]
           - [ /tmp/app_launch.sh ]
           - [ curl, localhost ]
+          - [ echo, "END" ]
 
   bastion_userdata:
     type: OS::Heat::CloudConfig

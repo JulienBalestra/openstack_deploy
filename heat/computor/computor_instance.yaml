@@ -16,9 +16,9 @@ resources:
     properties:
       name:
         str_replace:
-          template: app%-rand%
+          template: bn%-rand%
           params:
-            "app%": { get_param: app_name }
+            "bn%": { get_param: instance_basename }
             "rand%": { get_attr: [random, value] }
       network_id: { get_param: local_net }
       fixed_ips: [{ "subnet_id": { get_param: local_sub } }]
@@ -30,9 +30,9 @@ resources:
     properties:
       name:
         str_replace:
-          template: app%-rand%
+          template: bn%-rand%
           params:
-            "app%": { get_param: app_name }
+            "bn%": { get_param: instance_basename }
             "rand%": { get_attr: [random, value] }
       key_name: { get_param: key_name }
       image: { get_param: image }
@@ -53,11 +53,10 @@ resources:
       protocol_port: 80
 
 parameters:
+  instance_basename:
+    type: string
   pool_id:
     type: string
-  app_name:
-    type: string
-    default: "computor"
   key_name:
     type: string
   anti_affinity:
