@@ -259,7 +259,7 @@ resources:
 parameters:
   context:
     type: string
-    default: "my_"
+    default: ""
   app_install:
     type: string
     label: Script for deploy the app with cloud-init
@@ -313,3 +313,7 @@ outputs:
   lb_app:
     value:
       - { get_attr: [lb_floating, floating_ip_address] }
+  base_name:
+    description: Random value used to tag stack resources
+    value:
+      - { get_attr: [random, value] }
