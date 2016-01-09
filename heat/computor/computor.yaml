@@ -190,8 +190,8 @@ resources:
     depends_on: [ local_inet, computor_anti, computor_sg, computor_userdata, pool ]
     type: OS::Heat::AutoScalingGroup
     properties:
-      min_size: 2
-      max_size: 10
+      min_size: 6
+      max_size: 7
       rolling_updates: {"max_batch_size": 1, "min_in_service": 2, "pause_time": 60}
       resource:
         type: "OS::Nova::ComputorServer"
@@ -237,7 +237,7 @@ resources:
       cloud_config:
         runcmd:
           - [ echo, "START" ]
-          - until curl google.com; do sleep 30; done
+          - until curl -s google.com; do sleep 30; done
           - [ apt-get, update, -qq]
           - [ apt-get, upgrade, -qqy]
           - [ curl, { get_param: app_install }, -o, /tmp/app_install.sh ]
