@@ -1,4 +1,4 @@
-# Info
+# Computor Application
 
 ## Objectif
 
