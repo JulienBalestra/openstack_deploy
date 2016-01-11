@@ -190,8 +190,8 @@ resources:
     depends_on: [ local_inet, computor_anti, computor_sg, computor_userdata, pool ]
     type: OS::Heat::AutoScalingGroup
     properties:
-      min_size: 6
-      max_size: 7
+      min_size: 2
+      max_size: 6
       rolling_updates: {"max_batch_size": 1, "min_in_service": 2, "pause_time": 60}
       resource:
         type: "OS::Nova::ComputorServer"
