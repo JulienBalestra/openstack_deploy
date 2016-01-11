@@ -1,7 +1,7 @@
 heat_template_version: 2014-10-16
 
 description: >
-  Build everything inside an empty tenant
+  Build network requirements inside an empty tenant and use an AutoScalingGroup
 
 resources:
   random:
