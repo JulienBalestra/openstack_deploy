@@ -1,7 +1,7 @@
 heat_template_version: 2014-10-16
 
 description: >
-  Build network requirements inside an empty tenant and use an AutoScalingGroup
+  Build network requirements inside an empty tenant and use an embedded AutoScalingGroup
 
 resources:
   random:
@@ -10,7 +10,7 @@ resources:
       length: 6
       sequence: lettersdigits
 
-  basic_net:
+  network:
     depends_on: [ random ]
     type: OS::Neutron::Net
     properties:
@@ -24,9 +24,9 @@ resources:
             "rand%": { get_attr: [random, value] }
       shared: False
 
-  basic_sub:
+  subnet:
     type: OS::Neutron::Subnet
-    depends_on: [ basic_net ]
+    depends_on: [ network ]
     properties:
       name:
         str_replace:
@@ -35,17 +35,17 @@ resources:
             "ctx%": {get_param: context}
             "ress%": "subnet"
             "rand%": { get_attr: [random, value] }
-      cidr: {get_param: basic_sub_cidr}
-      network: {get_resource: basic_net}
-      allocation_pools: [{"start" : {get_param: basic_sub_start}, "end" : {get_param: basic_sub_end}}]
+      cidr: {get_param: subnet_cidr}
+      network: {get_resource: network}
+      allocation_pools: [{"start" : {get_param: subnet_start}, "end" : {get_param: subnet_end}}]
       dns_nameservers: {get_param: dns_nameservers}
       enable_dhcp: True
-      gateway_ip: {get_param: basic_gateway}
+      gateway_ip: {get_param: gateway_ip}
       ip_version: 4
 
-  basic_router:
+  router:
     type: OS::Neutron::Router
-    depends_on: [ basic_sub ]
+    depends_on: [ subnet ]
     properties:
       name:
         str_replace:
@@ -57,14 +57,14 @@ resources:
       admin_state_up: True
       external_gateway_info: {"network": {get_param: floatingip_network_name}}
 
-  basic_inet:
+  interface:
     type: OS::Neutron::RouterInterface
-    depends_on: [ basic_router ]
+    depends_on: [ router ]
     properties:
-      router_id: { get_resource: basic_router }
-      subnet_id: { get_resource: basic_sub }
+      router_id: { get_resource: router }
+      subnet_id: { get_resource: subnet }
 
-  basic_sg:
+  embedded_securitygroup:
       depends_on: [ random ]
       type: OS::Neutron::SecurityGroup
       properties:
@@ -73,20 +73,25 @@ resources:
             template: ctx%ress%-rand%
             params:
               "ctx%": {get_param: context}
-              "ress%": "basic"
+              "ress%": "embedded"
               "rand%": { get_attr: [random, value] }
         rules:
-          - remote_ip_prefix: {get_param: basic_sub_cidr}
+          - remote_ip_prefix: {get_param: subnet_cidr}
             protocol: tcp
             port_range_min: 22
             port_range_max: 22
             direction: ingress
-          - remote_ip_prefix: {get_param: basic_sub_cidr}
+          - remote_ip_prefix: {get_param: subnet_cidr}
+            protocol: tcp
+            port_range_min: 80
+            port_range_max: 80
+            direction: ingress
+          - remote_ip_prefix: {get_param: subnet_cidr}
             protocol: icmp
             direction: ingress
 
-  basic_scale:
-    depends_on: [ basic_inet, basic_sg, basic_userdata ]
+  embedded_group:
+    depends_on: [ interface, embedded_securitygroup, embedded_userdata ]
     type: OS::Heat::AutoScalingGroup
     properties:
       min_size: 2
@@ -99,29 +104,29 @@ resources:
           image: { get_param: image }
           flavor: { get_param: flavor }
           networks:
-            - network: {get_resource: basic_net}
+            - network: {get_resource: network}
           user_data_format: RAW
-          user_data: { get_resource: basic_userdata }
+          user_data: { get_resource: embedded_userdata }
 
   scale_up:
-    depends_on: [ basic_scale ]
+    depends_on: [ embedded_group ]
     type: OS::Heat::ScalingPolicy
     properties:
       adjustment_type: change_in_capacity
-      auto_scaling_group_id: {get_resource: basic_scale}
+      auto_scaling_group_id: {get_resource: embedded_group}
       cooldown: 30
       scaling_adjustment: 1
 
   scale_down:
-    depends_on: [ basic_scale ]
+    depends_on: [ embedded_group ]
     type: OS::Heat::ScalingPolicy
     properties:
       adjustment_type: change_in_capacity
-      auto_scaling_group_id: {get_resource: basic_scale}
+      auto_scaling_group_id: {get_resource: embedded_group}
       cooldown: 30
       scaling_adjustment: -1
 
-  basic_userdata:
+  embedded_userdata:
     type: OS::Heat::CloudConfig
     properties:
       cloud_config:
@@ -136,16 +141,16 @@ parameters:
     type: string
     label: Name of keypair to assign to servers
     description: key_name=foo
-  basic_sub_cidr:
+  subnet_cidr:
     type: string
     default: "192.168.1.0/24"
-  basic_sub_start:
+  subnet_start:
     type: string
     default: "192.168.1.100"
-  basic_sub_end:
+  subnet_end:
     type: string
     default: "192.168.1.200"
-  basic_gateway:
+  gateway_ip:
     type: string
     default: "192.168.1.254"
   dns_nameservers:
