@@ -1,0 +1,3 @@
+resource_registry:
+  "lib::LBInstance": ../lib/lb_instance.yaml
+  "lib::FIPInstance": ../lib/fip_instance.yaml
