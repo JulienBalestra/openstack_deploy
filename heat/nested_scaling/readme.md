@@ -32,7 +32,7 @@ You'll need the following parameters to create the "nested_scaling":
     do
     if [ $(neutron net-show ${n} | grep "router:external" | awk '{print $4}') == "True" ]
     then
-        echo ${n}
+        neutron net-show ${n}
     fi
     done
     
