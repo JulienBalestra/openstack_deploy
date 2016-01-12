@@ -1,8 +1,8 @@
 heat_template_version: 2014-10-16
 
 description: >
-  Build network, admin access requirements inside an empty tenant and deploy an Application
-  Use noport_computor.yaml instead of this one if you meet some SDN issues
+  Build network, admin access requirements inside an empty tenant,
+  deploy an Application without Neutron port inside the registry nested stack (SDN issue)
 
 resources:
   random:
@@ -194,13 +194,12 @@ resources:
       max_size: 6
       rolling_updates: {"max_batch_size": 1, "min_in_service": 2, "pause_time": 60}
       resource:
-        type: "lib::LBInstance"
+        type: "lib::NPLBInstance"
         properties:
           key_name: { get_param: key_name }
           anti_affinity: { get_resource: computor_anti }
           security_group: { get_resource: bastion_securitygroup }
           network: { get_resource: network }
-          subnet: { get_resource: subnet }
           userdata: { get_resource: computor_userdata }
           flavor: { get_param: flavor }
           image: { get_param: image }
