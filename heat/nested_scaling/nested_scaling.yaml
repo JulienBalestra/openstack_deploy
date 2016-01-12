@@ -10,7 +10,7 @@ resources:
       length: 6
       sequence: lettersdigits
 
-  local_net:
+  network:
     depends_on: [ random ]
     type: OS::Neutron::Net
     properties:
@@ -24,9 +24,9 @@ resources:
             "rand%": { get_attr: [random, value] }
       shared: False
 
-  local_sub:
+  subnet:
     type: OS::Neutron::Subnet
-    depends_on: [ local_net ]
+    depends_on: [ network ]
     properties:
       name:
         str_replace:
@@ -35,17 +35,17 @@ resources:
             "ctx%": {get_param: context}
             "ress%": "subnet"
             "rand%": { get_attr: [random, value] }
-      cidr: {get_param: local_sub_cidr}
-      network: {get_resource: local_net}
-      allocation_pools: [{"start" : {get_param: local_sub_start}, "end" : {get_param: local_sub_end}}]
+      cidr: {get_param: subnet_cidr}
+      network: {get_resource: network}
+      allocation_pools: [{"start" : {get_param: subnet_start}, "end" : {get_param: subnet_end}}]
       dns_nameservers: {get_param: dns_nameservers}
       enable_dhcp: True
-      gateway_ip: {get_param: local_gateway}
+      gateway_ip: {get_param: gateway_ip}
       ip_version: 4
 
-  local_router:
+  router:
     type: OS::Neutron::Router
-    depends_on: [ local_sub ]
+    depends_on: [ subnet ]
     properties:
       name:
         str_replace:
@@ -57,14 +57,14 @@ resources:
       admin_state_up: True
       external_gateway_info: {"network": {get_param: floatingip_network_name}}
 
-  local_inet:
+  interface:
     type: OS::Neutron::RouterInterface
-    depends_on: [ local_router ]
+    depends_on: [ router ]
     properties:
-      router_id: { get_resource: local_router }
-      subnet_id: { get_resource: local_sub }
+      router_id: { get_resource: router }
+      subnet_id: { get_resource: subnet }
 
-  computor_sg:
+  toscale_securitygroup:
       depends_on: [ random ]
       type: OS::Neutron::SecurityGroup
       properties:
@@ -73,24 +73,24 @@ resources:
             template: ctx%ress%-rand%
             params:
               "ctx%": {get_param: context}
-              "ress%": "computor"
+              "ress%": "toscale"
               "rand%": { get_attr: [random, value] }
         rules:
-          - remote_ip_prefix: {get_param: local_sub_cidr}
+          - remote_ip_prefix: {get_param: subnet_cidr}
             protocol: tcp
             port_range_min: 22
             port_range_max: 22
             direction: ingress
-          - remote_ip_prefix: {get_param: local_sub_cidr}
+          - remote_ip_prefix: {get_param: subnet_cidr}
             protocol: tcp
             port_range_min: 80
             port_range_max: 80
             direction: ingress
-          - remote_ip_prefix: {get_param: local_sub_cidr}
+          - remote_ip_prefix: {get_param: subnet_cidr}
             protocol: icmp
             direction: ingress
 
-  bastion_sg:
+  bastion_securitygroup:
       depends_on: [ random ]
       type: OS::Neutron::SecurityGroup
       properties:
@@ -112,7 +112,7 @@ resources:
             direction: ingress
 
   bastion_group:
-    depends_on: [ local_inet, bastion_sg, bastion_userdata ]
+    depends_on: [ interface, bastion_securitygroup, bastion_userdata ]
     type: OS::Heat::ResourceGroup
     properties:
       count: 1
@@ -120,14 +120,14 @@ resources:
         type: "OS::Nova::BastionServer"
         properties:
           key_name: { get_param: key_name }
-          security_group: { get_resource: bastion_sg }
-          local_net: { get_resource: local_net }
-          local_sub: { get_resource: local_sub }
+          security_group: { get_resource: bastion_securitygroup }
+          network: { get_resource: network }
+          subnet: { get_resource: subnet }
           userdata: { get_resource: bastion_userdata }
           flavor: { get_param: flavor }
           image: { get_param: image }
           floatingip_network_name: { get_param: floatingip_network_name }
-          instance_name:
+          instance_basename:
             str_replace:
               template: ctx%rand%-ress%-%index%
               params:
@@ -135,21 +135,21 @@ resources:
                 "ress%": "bastion"
                 "rand%": { get_attr: [random, value] }
 
-  computor_scale:
-    depends_on: [ local_inet, computor_sg, computor_userdata ]
+  toscale_group:
+    depends_on: [ interface, toscale_securitygroup, toscale_userdata ]
     type: OS::Heat::AutoScalingGroup
     properties:
       min_size: 2
       max_size: 6
       rolling_updates: {"max_batch_size": 1, "min_in_service": 2, "pause_time": 60}
       resource:
-        type: "OS::Nova::ComputorServer"
+        type: "OS::Nova::ScaleServer"
         properties:
           key_name: { get_param: key_name }
-          security_group: { get_resource: computor_sg }
-          local_net: { get_resource: local_net }
-          local_sub: { get_resource: local_sub }
-          userdata: { get_resource: computor_userdata }
+          security_group: { get_resource: bastion_securitygroup }
+          network: { get_resource: network }
+          subnet: { get_resource: subnet }
+          userdata: { get_resource: toscale_userdata }
           flavor: { get_param: flavor }
           image: { get_param: image }
           instance_basename:
@@ -158,27 +158,27 @@ resources:
              params:
                "ctx%": {get_param: context}
                "rand%": { get_attr: [random, value] }
-               "ress%": "computor"
+               "ress%": "toscale"
 
   scale_up:
-    depends_on: [ computor_scale ]
+    depends_on: [ toscale_group ]
     type: OS::Heat::ScalingPolicy
     properties:
       adjustment_type: change_in_capacity
-      auto_scaling_group_id: {get_resource: computor_scale}
+      auto_scaling_group_id: {get_resource: toscale_group}
       cooldown: 30
       scaling_adjustment: 1
 
   scale_down:
-    depends_on: [ computor_scale ]
+    depends_on: [ toscale_group ]
     type: OS::Heat::ScalingPolicy
     properties:
       adjustment_type: change_in_capacity
-      auto_scaling_group_id: {get_resource: computor_scale}
+      auto_scaling_group_id: {get_resource: toscale_group}
       cooldown: 30
       scaling_adjustment: -1
 
-  computor_userdata:
+  toscale_userdata:
     type: OS::Heat::CloudConfig
     properties:
       cloud_config:
@@ -202,16 +202,16 @@ parameters:
     type: string
     label: Name of keypair to assign to servers
     description: key_name=foo
-  local_sub_cidr:
+  subnet_cidr:
     type: string
     default: "192.168.1.0/24"
-  local_sub_start:
+  subnet_start:
     type: string
     default: "192.168.1.100"
-  local_sub_end:
+  subnet_end:
     type: string
     default: "192.168.1.200"
-  local_gateway:
+  gateway_ip:
     type: string
     default: "192.168.1.254"
   dns_nameservers:

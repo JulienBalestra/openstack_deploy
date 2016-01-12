@@ -1,0 +1,3 @@
+resource_registry:
+  "OS::Nova::ScaleServer": ../lib/base_instance.yaml
+  "OS::Nova::BastionServer": ../lib/fip_instance.yaml
