@@ -198,7 +198,7 @@ resources:
         properties:
           key_name: { get_param: key_name }
           anti_affinity: { get_resource: computor_anti }
-          security_group: { get_resource: bastion_securitygroup }
+          security_group: { get_resource: computor_securitygroup }
           network: { get_resource: network }
           userdata: { get_resource: computor_userdata }
           flavor: { get_param: flavor }
