@@ -1,7 +1,7 @@
 heat_template_version: 2014-10-16
 
 description: >
-  Instance with UserData
+  Instance with UserData, AntiAffinity and member of a Load Balancer Pool
 
 resources:
   random:
