@@ -117,7 +117,7 @@ resources:
     properties:
       count: 1
       resource_def:
-        type: "OS::Nova::BastionServer"
+        type: "lib::FIPInstance"
         properties:
           key_name: { get_param: key_name }
           security_group: { get_resource: bastion_securitygroup }
@@ -143,7 +143,7 @@ resources:
       max_size: 6
       rolling_updates: {"max_batch_size": 1, "min_in_service": 2, "pause_time": 60}
       resource:
-        type: "OS::Nova::ScaleServer"
+        type: "lib::BaseInstance"
         properties:
           key_name: { get_param: key_name }
           security_group: { get_resource: bastion_securitygroup }
