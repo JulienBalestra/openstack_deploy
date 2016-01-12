@@ -1,0 +1,244 @@
+heat_template_version: 2014-10-16
+
+description: >
+  Build network, admin access requirements inside an empty tenant and deploy an Application
+
+resources:
+  random:
+    type: OS::Heat::RandomString
+    properties:
+      length: 6
+      sequence: lettersdigits
+
+  local_net:
+    depends_on: [ random ]
+    type: OS::Neutron::Net
+    properties:
+      admin_state_up: True
+      name:
+        str_replace:
+          template: ctx%ress%-rand%
+          params:
+            "ctx%": {get_param: context}
+            "ress%": "net"
+            "rand%": { get_attr: [random, value] }
+      shared: False
+
+  local_sub:
+    type: OS::Neutron::Subnet
+    depends_on: [ local_net ]
+    properties:
+      name:
+        str_replace:
+          template: ctx%ress%-rand%
+          params:
+            "ctx%": {get_param: context}
+            "ress%": "subnet"
+            "rand%": { get_attr: [random, value] }
+      cidr: {get_param: local_sub_cidr}
+      network: {get_resource: local_net}
+      allocation_pools: [{"start" : {get_param: local_sub_start}, "end" : {get_param: local_sub_end}}]
+      dns_nameservers: {get_param: dns_nameservers}
+      enable_dhcp: True
+      gateway_ip: {get_param: local_gateway}
+      ip_version: 4
+
+  local_router:
+    type: OS::Neutron::Router
+    depends_on: [ local_sub ]
+    properties:
+      name:
+        str_replace:
+          template: ctx%ress%-rand%
+          params:
+            "ctx%": {get_param: context}
+            "ress%": "router"
+            "rand%": { get_attr: [random, value] }
+      admin_state_up: True
+      external_gateway_info: {"network": {get_param: floatingip_network_name}}
+
+  local_inet:
+    type: OS::Neutron::RouterInterface
+    depends_on: [ local_router ]
+    properties:
+      router_id: { get_resource: local_router }
+      subnet_id: { get_resource: local_sub }
+
+  computor_sg:
+      depends_on: [ random ]
+      type: OS::Neutron::SecurityGroup
+      properties:
+        name:
+          str_replace:
+            template: ctx%ress%-rand%
+            params:
+              "ctx%": {get_param: context}
+              "ress%": "computor"
+              "rand%": { get_attr: [random, value] }
+        rules:
+          - remote_ip_prefix: {get_param: local_sub_cidr}
+            protocol: tcp
+            port_range_min: 22
+            port_range_max: 22
+            direction: ingress
+          - remote_ip_prefix: {get_param: local_sub_cidr}
+            protocol: tcp
+            port_range_min: 80
+            port_range_max: 80
+            direction: ingress
+          - remote_ip_prefix: {get_param: local_sub_cidr}
+            protocol: icmp
+            direction: ingress
+
+  bastion_sg:
+      depends_on: [ random ]
+      type: OS::Neutron::SecurityGroup
+      properties:
+        name:
+          str_replace:
+            template: ctx%ress%-rand%
+            params:
+              "ctx%": {get_param: context}
+              "ress%": "bastion"
+              "rand%": { get_attr: [random, value] }
+        rules:
+          - remote_ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            port_range_min: 22
+            port_range_max: 22
+            direction: ingress
+          - remote_ip_prefix: 0.0.0.0/0
+            protocol: icmp
+            direction: ingress
+
+  bastion_group:
+    depends_on: [ local_inet, bastion_sg, bastion_userdata ]
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: 1
+      resource_def:
+        type: "OS::Nova::BastionServer"
+        properties:
+          key_name: { get_param: key_name }
+          security_group: { get_resource: bastion_sg }
+          local_net: { get_resource: local_net }
+          local_sub: { get_resource: local_sub }
+          userdata: { get_resource: bastion_userdata }
+          flavor: { get_param: flavor }
+          image: { get_param: image }
+          floatingip_network_name: { get_param: floatingip_network_name }
+          instance_name:
+            str_replace:
+              template: ctx%rand%-ress%-%index%
+              params:
+                "ctx%": {get_param: context}
+                "ress%": "bastion"
+                "rand%": { get_attr: [random, value] }
+
+  computor_scale:
+    depends_on: [ local_inet, computor_sg, computor_userdata ]
+    type: OS::Heat::AutoScalingGroup
+    properties:
+      min_size: 2
+      max_size: 6
+      rolling_updates: {"max_batch_size": 1, "min_in_service": 2, "pause_time": 60}
+      resource:
+        type: "OS::Nova::ComputorServer"
+        properties:
+          key_name: { get_param: key_name }
+          security_group: { get_resource: computor_sg }
+          local_net: { get_resource: local_net }
+          local_sub: { get_resource: local_sub }
+          userdata: { get_resource: computor_userdata }
+          flavor: { get_param: flavor }
+          image: { get_param: image }
+          instance_basename:
+            str_replace:
+             template: ctx%rand%-ress%
+             params:
+               "ctx%": {get_param: context}
+               "rand%": { get_attr: [random, value] }
+               "ress%": "computor"
+
+  scale_up:
+    depends_on: [ computor_scale ]
+    type: OS::Heat::ScalingPolicy
+    properties:
+      adjustment_type: change_in_capacity
+      auto_scaling_group_id: {get_resource: computor_scale}
+      cooldown: 30
+      scaling_adjustment: 1
+
+  scale_down:
+    depends_on: [ computor_scale ]
+    type: OS::Heat::ScalingPolicy
+    properties:
+      adjustment_type: change_in_capacity
+      auto_scaling_group_id: {get_resource: computor_scale}
+      cooldown: 30
+      scaling_adjustment: -1
+
+  computor_userdata:
+    type: OS::Heat::CloudConfig
+    properties:
+      cloud_config:
+        runcmd:
+          - [ echo, "START" ]
+          - [ echo, "hello_world" ]
+          - [ echo, "END" ]
+
+  bastion_userdata:
+    type: OS::Heat::CloudConfig
+    properties:
+      cloud_config:
+        runcmd:
+          - [ echo, "hello_world" ]
+
+parameters:
+  context:
+    type: string
+    default: ""
+  key_name:
+    type: string
+    label: Name of keypair to assign to servers
+    description: key_name=foo
+  local_sub_cidr:
+    type: string
+    default: "192.168.1.0/24"
+  local_sub_start:
+    type: string
+    default: "192.168.1.100"
+  local_sub_end:
+    type: string
+    default: "192.168.1.200"
+  local_gateway:
+    type: string
+    default: "192.168.1.254"
+  dns_nameservers:
+    type: comma_delimited_list
+    label: DNS nameservers
+    description: dns_nameservers=8.8.8.8,8.8.4.4
+  floatingip_network_name:
+    type: string
+    label: The Floating IP network for NAT
+    description: floatingip_network_name=public
+  flavor:
+    type: string
+    label: The flavor for Instances
+    description: flavor=m1.medium
+  image:
+    type: string
+    label: The debian image based for Instances
+    description: image=debian-8-2016-01-01
+
+outputs:
+  scale_up:
+    value:
+      - {get_attr: [scale_up, alarm_url]}
+  scale_down:
+    value:
+      - {get_attr: [scale_down, alarm_url]}
+  base_name:
+    description: Random value used to tag stack resources
+    value:
+      - { get_attr: [random, value] }
