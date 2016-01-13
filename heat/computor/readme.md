@@ -26,8 +26,6 @@ Ce template est composé de plusieurs types de ressources :
 
 ### Racine heat
 
-[computor](https://github.com/JulienBalestra/openstack_deploy/blob/master/heat/computor/computor.yaml)
-
 #### Réseau
 
     * réseau (Neutron::Net)
@@ -61,17 +59,12 @@ Ce template est composé de plusieurs types de ressources :
     
 ### Nested Stack Bastion
 
-[bastion_instance](https://github.com/Julienalestra/openstack_deploy/blob/master/heat/computor/bastion_instance.yaml)
-
-
 #### Réseau
 
     * Une interface réseau connectée sur le sous-réseau créé (Neutron::Port)
     * Une adresse IP publique reliée sur le port créé ci-dessus (Neutron::FloatingIP)
     
 ### Nested Stack Application
-
-[computor_instance](https://github.com/JulienBalestra/openstack_deploy/blob/master/heat/computor/computor_instance.yaml)
 
 
 #### Réseau
