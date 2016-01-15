@@ -106,5 +106,40 @@ class TestWatcherunModify(unittest.TestCase):
 		self.assertFalse(self.w._need_update())
 
 
+class TestWatcherEmpty(unittest.TestCase):
+	w = type(watcher.Watcher)
+	hajson_path = "etc_haproxy_servers.json"
+	hacfg_path = "etc_haproxy_haproxy.cfg"
+	habase_path = "etc_haproxy_haproxy_base.cfg"
+
+	@classmethod
+	def setUpClass(cls):
+		os.chdir("%s/test_resources" % os.path.dirname(__file__))
+		cls.w = watcher.Watcher(
+				meta_url="mock",
+				hajson_path=cls.hajson_path,
+				hacfg_path=cls.hacfg_path,
+				habase_path=cls.habase_path,
+				port=80
+		)
+
+	@classmethod
+	def tearDownClass(cls):
+		with open("etc_haproxy_servers.json", 'w') as f:
+			f.write("[]")
+
+	def test_00_get_metadata(self):
+		@patch('watcher.urllib2.urlopen')
+		def mock_metadata(mock_urlopen):
+			a = Mock()
+			a.read.side_effect = [json.dumps({"notserver": ["192.168.0.1"]})]
+			mock_urlopen.return_value = a
+			res = self.w._get_metadata()
+			assert res == [u'192.168.0.1']
+
+		with self.assertRaises(KeyError):
+			mock_metadata()
+
+
 if __name__ == "__main__":
 	unittest.main()
