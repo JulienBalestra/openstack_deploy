@@ -2,4 +2,4 @@ language: python
 
 
 script:
-  - nosetests scripts/haproxy/
+  - ./run_test.sh
