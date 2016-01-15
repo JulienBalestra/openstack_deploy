@@ -1,3 +1,4 @@
 param.yaml
 /.idea/
+/scripts/haproxy/test_resources/etc_haproxy_haproxy.cfg
 *.iml
