@@ -2,5 +2,4 @@ language: python
 
 
 script:
-  - export PYTHONPATH=$(pwd)/scripts/haproxy
-  - python -m unittest discover $(pwd)/scripts/haproxy/test_*
+  - nosetests scripts/haproxy/
