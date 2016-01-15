@@ -1,0 +1,2 @@
+resource_registry:
+  "lib::FIPInstance": ../lib/fip_instance.yaml

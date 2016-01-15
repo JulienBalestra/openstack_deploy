@@ -1,0 +1,159 @@
+heat_template_version: 2014-10-16
+
+description: >
+  Build network requirements inside an empty tenant and use an fast AutoScalingGroup
+
+resources:
+  random:
+    type: OS::Heat::RandomString
+    properties:
+      length: 6
+      sequence: lettersdigits
+
+  network:
+    depends_on: [ random ]
+    type: OS::Neutron::Net
+    properties:
+      admin_state_up: True
+      name:
+        str_replace:
+          template: ctx%ress%-rand%
+          params:
+            "ctx%": {get_param: context}
+            "ress%": "net"
+            "rand%": { get_attr: [random, value] }
+      shared: False
+
+  subnet:
+    type: OS::Neutron::Subnet
+    depends_on: [ network ]
+    properties:
+      name:
+        str_replace:
+          template: ctx%ress%-rand%
+          params:
+            "ctx%": {get_param: context}
+            "ress%": "subnet"
+            "rand%": { get_attr: [random, value] }
+      cidr: {get_param: subnet_cidr}
+      network: {get_resource: network}
+      allocation_pools: [{"start" : {get_param: subnet_start}, "end" : {get_param: subnet_end}}]
+      dns_nameservers: {get_param: dns_nameservers}
+      enable_dhcp: True
+      gateway_ip: {get_param: gateway_ip}
+      ip_version: 4
+
+  router:
+    type: OS::Neutron::Router
+    depends_on: [ subnet ]
+    properties:
+      name:
+        str_replace:
+          template: ctx%ress%-rand%
+          params:
+            "ctx%": {get_param: context}
+            "ress%": "router"
+            "rand%": { get_attr: [random, value] }
+      admin_state_up: True
+      external_gateway_info: {"network": {get_param: floatingip_network_name}}
+
+  interface:
+    type: OS::Neutron::RouterInterface
+    depends_on: [ router ]
+    properties:
+      router_id: { get_resource: router }
+      subnet_id: { get_resource: subnet }
+
+  fast_securitygroup:
+      depends_on: [ random ]
+      type: OS::Neutron::SecurityGroup
+      properties:
+        name:
+          str_replace:
+            template: ctx%ress%-rand%
+            params:
+              "ctx%": {get_param: context}
+              "ress%": "fast"
+              "rand%": { get_attr: [random, value] }
+        rules:
+          - remote_ip_prefix: {get_param: where_are_you}
+            protocol: tcp
+            port_range_min: 22
+            port_range_max: 22
+            direction: ingress
+          - remote_ip_prefix: {get_param: where_are_you}
+            protocol: icmp
+            direction: ingress
+
+  instance:
+    depends_on: [ fast_securitygroup, interface, fast_userdata]
+    type: "lib::FIPInstance"
+    properties:
+      key_name: { get_param: key_name }
+      security_group: { get_resource: fast_securitygroup }
+      network: { get_resource: network }
+      userdata: { get_resource: fast_userdata }
+      subnet: { get_resource: subnet }
+      flavor: { get_param: flavor }
+      image: { get_param: image }
+      floatingip_network_name: { get_param: floatingip_network_name }
+      instance_basename:
+        str_replace:
+          template: ctx%rand%-ress%
+          params:
+            "ctx%": {get_param: context}
+            "ress%": "fast"
+            "rand%": { get_attr: [random, value] }
+
+  fast_userdata:
+    type: OS::Heat::CloudConfig
+    properties:
+      cloud_config:
+        runcmd:
+          - [ echo, "hello_world" ]
+
+parameters:
+  context:
+    type: string
+    default: ""
+  key_name:
+    type: string
+    label: Name of keypair to assign to servers
+    description: key_name=foo
+  subnet_cidr:
+    type: string
+    default: "192.168.1.0/24"
+  subnet_start:
+    type: string
+    default: "192.168.1.100"
+  subnet_end:
+    type: string
+    default: "192.168.1.200"
+  gateway_ip:
+    type: string
+    default: "192.168.1.254"
+  dns_nameservers:
+    type: comma_delimited_list
+    label: DNS nameservers
+    description: dns_nameservers=8.8.8.8,8.8.4.4
+  floatingip_network_name:
+    type: string
+    label: The Floating IP network for NAT
+    description: floatingip_network_name=public
+  flavor:
+    type: string
+    label: The flavor for Instances
+    description: flavor=m1.medium
+  image:
+    type: string
+    label: The debian image based for Instances
+    description: image=debian-8-2016-01-01
+  where_are_you:
+    type: string
+    default: "0.0.0.0/0"
+
+outputs:
+  base_name:
+    description: Random value used to tag stack resources
+    value:
+      - { get_attr: [random, value] }
