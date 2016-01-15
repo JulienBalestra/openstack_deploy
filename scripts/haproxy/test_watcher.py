@@ -104,3 +104,7 @@ class TestWatcherunModify(unittest.TestCase):
 
 	def test_02_need_update(self):
 		self.assertFalse(self.w._need_update())
+
+
+if __name__ == "__main__":
+	unittest.main()
