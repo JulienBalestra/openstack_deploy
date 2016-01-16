@@ -1,7 +1,7 @@
 heat_template_version: 2014-10-16
 
 description: >
-  Build network requirements inside an empty tenant and use an fast AutoScalingGroup
+  Build network requirements inside an empty tenant and use a fast usable instance
 
 resources:
   random:
