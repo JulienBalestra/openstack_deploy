@@ -20,11 +20,10 @@ class Watcher(object):
 		res = urllib2.urlopen(req)
 		metadata = json.loads(res.read())
 		res.close()
-		try:
-			self.metadata_servers = metadata['meta']['servers']
-			return self.metadata_servers
-		except KeyError:
-			raise KeyError("cannot fetch server in metadata\n%s\n%s" % (self.metadata_servers, metadata))
+		self.metadata_servers = json.loads(metadata.get('meta', {}).get('servers', '[]'))
+		if type(self.metadata_servers) is not list:
+			raise TypeError("%s:%s" % (self.metadata_servers, type(self.metadata_servers)))
+		return self.metadata_servers
 
 	def _get_current_server_list(self):
 		with open(self.hajson_path, 'r') as curr:

@@ -33,7 +33,23 @@ class TestWatcherModify(unittest.TestCase):
 		@patch('watcher.urllib2.urlopen')
 		def mock_metadata(mock_urlopen):
 			a = Mock()
-			a.read.side_effect = [json.dumps({"meta": {"servers": ["192.168.0.1"]}})]
+			a.read.side_effect = [json.dumps(
+					{
+						"random_seed": "value",
+						"uuid": "value",
+						"availability_zone": "value",
+						"hostname": "value",
+						"launch_index": 0,
+						"meta": {
+							"servers": "[\"192.168.0.1\"]"
+						},
+						"public_keys": {
+							"public": "value Generated-by-Nova\n"
+						},
+						"name": "value"
+					}
+
+			)]
 			mock_urlopen.return_value = a
 			res = self.w._get_metadata()
 			assert res == [u'192.168.0.1']
@@ -90,7 +106,23 @@ class TestWatcherunModify(unittest.TestCase):
 		@patch('watcher.urllib2.urlopen')
 		def mock_metadata(mock_urlopen):
 			a = Mock()
-			a.read.side_effect = [json.dumps({"meta": {"servers": ["192.168.0.1"]}})]
+			a.read.side_effect = [json.dumps(
+					{
+						"random_seed": "value",
+						"uuid": "value",
+						"availability_zone": "value",
+						"hostname": "value",
+						"launch_index": 0,
+						"meta": {
+							"servers": "[\"192.168.0.1\"]"
+						},
+						"public_keys": {
+							"public": "value Generated-by-Nova\n"
+						},
+						"name": "value"
+					}
+
+			)]
 			mock_urlopen.return_value = a
 			res = self.w._get_metadata()
 			assert res == [u'192.168.0.1']
@@ -132,13 +164,29 @@ class TestWatcherEmpty(unittest.TestCase):
 		@patch('watcher.urllib2.urlopen')
 		def mock_metadata(mock_urlopen):
 			a = Mock()
-			a.read.side_effect = [json.dumps({"meta": {"notservers": ["192.168.0.1"]}})]
+			a.read.side_effect = [json.dumps(
+					{
+						"random_seed": "value",
+						"uuid": "value",
+						"availability_zone": "value",
+						"hostname": "value",
+						"launch_index": 0,
+						"meta": {
+							"another_key": "[\"192.168.0.1\"]"
+						},
+						"public_keys": {
+							"public": "value Generated-by-Nova\n"
+						},
+						"name": "value"
+					}
+
+			)]
 			mock_urlopen.return_value = a
 			res = self.w._get_metadata()
-			assert res == [u'192.168.0.1']
+			assert res == []
 
-		with self.assertRaises(KeyError):
-			mock_metadata()
+		mock_metadata()
+		self.assertEqual([], self.w.metadata_servers)
 
 
 if __name__ == "__main__":
