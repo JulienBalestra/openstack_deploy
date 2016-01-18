@@ -33,7 +33,7 @@ class TestWatcherModify(unittest.TestCase):
 		@patch('watcher.urllib2.urlopen')
 		def mock_metadata(mock_urlopen):
 			a = Mock()
-			a.read.side_effect = [json.dumps({"servers": ["192.168.0.1"]})]
+			a.read.side_effect = [json.dumps({"meta": {"servers": ["192.168.0.1"]}})]
 			mock_urlopen.return_value = a
 			res = self.w._get_metadata()
 			assert res == [u'192.168.0.1']
@@ -90,7 +90,7 @@ class TestWatcherunModify(unittest.TestCase):
 		@patch('watcher.urllib2.urlopen')
 		def mock_metadata(mock_urlopen):
 			a = Mock()
-			a.read.side_effect = [json.dumps({"servers": ["192.168.0.1"]})]
+			a.read.side_effect = [json.dumps({"meta": {"servers": ["192.168.0.1"]}})]
 			mock_urlopen.return_value = a
 			res = self.w._get_metadata()
 			assert res == [u'192.168.0.1']
@@ -132,7 +132,7 @@ class TestWatcherEmpty(unittest.TestCase):
 		@patch('watcher.urllib2.urlopen')
 		def mock_metadata(mock_urlopen):
 			a = Mock()
-			a.read.side_effect = [json.dumps({"notserver": ["192.168.0.1"]})]
+			a.read.side_effect = [json.dumps({"meta": {"notservers": ["192.168.0.1"]}})]
 			mock_urlopen.return_value = a
 			res = self.w._get_metadata()
 			assert res == [u'192.168.0.1']

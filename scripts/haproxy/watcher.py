@@ -1,3 +1,4 @@
+#! /usr/bin/python
 import json
 import subprocess
 import argparse
@@ -20,7 +21,7 @@ class Watcher(object):
 		metadata = json.loads(res.read())
 		res.close()
 		try:
-			self.metadata_servers = metadata['servers']
+			self.metadata_servers = metadata['meta']['servers']
 			return self.metadata_servers
 		except KeyError:
 			raise KeyError("cannot fetch server in metadata\n%s\n%s" % (self.metadata_servers, metadata))
@@ -85,6 +86,6 @@ if __name__ == "__main__":
 	w = Watcher(meta_url=ap.meta_url,
 				hajson_path=ap.haproxy_json,
 				hacfg_path=ap.haproxy_config,
-				habase_path=ap.haref_base,
+				habase_path=ap.haproxy_base,
 				port=ap.port)
 	w.do()
