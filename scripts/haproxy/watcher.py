@@ -3,6 +3,7 @@ import json
 import subprocess
 import argparse
 import urllib2
+import socket
 
 
 class Watcher(object):
@@ -15,6 +16,14 @@ class Watcher(object):
 		self.habase_path = habase_path
 		self.port = port
 
+	@staticmethod
+	def is_ip(string):
+		try:
+			socket.inet_aton(string)
+			return True
+		except socket.error:
+			return False
+
 	def _get_metadata(self):
 		req = urllib2.Request(self.meta_url)
 		res = urllib2.urlopen(req)
@@ -23,6 +32,10 @@ class Watcher(object):
 		self.metadata_servers = json.loads(metadata.get('meta', {}).get('servers', '[]'))
 		if type(self.metadata_servers) is not list:
 			raise TypeError("%s:%s" % (self.metadata_servers, type(self.metadata_servers)))
+		for ip in self.metadata_servers:
+			if self.is_ip(ip) is False:
+				raise TypeError(
+					"not a valid IP address [%s] %s:%s" % (ip, self.metadata_servers, type(self.metadata_servers)))
 		return self.metadata_servers
 
 	def _get_current_server_list(self):
