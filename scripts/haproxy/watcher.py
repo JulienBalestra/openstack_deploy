@@ -7,7 +7,7 @@ import socket
 
 
 class Watcher(object):
-	def __init__(self, meta_url, hajson_path, hacfg_path, habase_path, port):
+	def __init__(self, meta_url, hajson_path, hacfg_path, habase_path, port=80, metadata_key="autoscaling_networks"):
 		self.meta_url = meta_url
 		self.metadata_servers = list()
 		self.hajson_path = hajson_path
@@ -15,6 +15,7 @@ class Watcher(object):
 		self.hacfg_path = hacfg_path
 		self.habase_path = habase_path
 		self.port = port
+		self.meta_data_key = metadata_key
 
 	@staticmethod
 	def is_ip(string):
@@ -23,19 +24,23 @@ class Watcher(object):
 			return True
 		except socket.error:
 			return False
+		except TypeError:
+			return False
 
 	def _get_metadata(self):
 		req = urllib2.Request(self.meta_url)
 		res = urllib2.urlopen(req)
 		metadata = json.loads(res.read())
 		res.close()
-		self.metadata_servers = json.loads(metadata.get('meta', {}).get('servers', '[]'))
-		if type(self.metadata_servers) is not list:
+		self.metadata_servers = json.loads(metadata.get('meta', {}).get(self.meta_data_key, '[]'))
+		try:
+			self.metadata_servers = [k.values()[0][0] for k in self.metadata_servers[0]]
+		except TypeError:
 			raise TypeError("%s:%s" % (self.metadata_servers, type(self.metadata_servers)))
 		for ip in self.metadata_servers:
 			if self.is_ip(ip) is False:
 				raise TypeError(
-					"not a valid IP address [%s] %s:%s" % (ip, self.metadata_servers, type(self.metadata_servers)))
+						"not a valid IP address [%s] %s:%s" % (ip, self.metadata_servers, type(self.metadata_servers)))
 		return self.metadata_servers
 
 	def _get_current_server_list(self):
@@ -88,6 +93,8 @@ if __name__ == "__main__":
 	args.add_argument('-p', '--port', type=int, default=80, help='Destination port')
 	args.add_argument('-m', '--meta_url', type=str, default="http://169.254.169.254/openstack/latest/meta_data.json",
 					  help='URL for metadata')
+	args.add_argument('-k', '--meta_key', type=str, default="autoscaling_networks",
+					  help='Key inside the metadata')
 	args.add_argument('-j', '--haproxy_json', type=str, default="/etc/haproxy/servers.json",
 					  help='HA Proxy Json list of servers')
 	args.add_argument('-c', '--haproxy_config', type=str, default="/etc/haproxy/haproxy.cfg",

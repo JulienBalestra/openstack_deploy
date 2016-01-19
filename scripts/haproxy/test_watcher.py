@@ -41,10 +41,10 @@ class TestWatcherModify(unittest.TestCase):
 						"hostname": "value",
 						"launch_index": 0,
 						"meta": {
-							"servers": "[\"192.168.0.1\"]"
+							"autoscaling_networks": '[[{"net-rbHIus": ["192.168.1.101"]},{"net-rbHIus": ["192.168.1.100"]}]]'
 						},
 						"public_keys": {
-							"public": "value Generated-by-Nova\n"
+							"public": "value Generated-by-Nova"
 						},
 						"name": "value"
 					}
@@ -52,10 +52,10 @@ class TestWatcherModify(unittest.TestCase):
 			)]
 			mock_urlopen.return_value = a
 			res = self.w._get_metadata()
-			assert res == [u'192.168.0.1']
+			assert res == [u'192.168.1.101', u'192.168.1.100']
 
 		mock_metadata()
-		self.assertEqual([u'192.168.0.1'], self.w.metadata_servers)
+		self.assertEqual([u'192.168.1.101', u'192.168.1.100'], self.w.metadata_servers)
 
 	def test_01_get_current_server_list(self):
 		self.w._get_current_server_list()
@@ -69,13 +69,14 @@ class TestWatcherModify(unittest.TestCase):
 			self.assertEqual('[]', f.read())
 		self.w._update_haproxy_json()
 		with open(self.w.hajson_path, 'r') as f:
-			self.assertEqual('["192.168.0.1"]', f.read())
+			self.assertEqual('["192.168.1.100", "192.168.1.101"]', f.read())
 
 	def test_04_generate_new_haproxy_cfg(self):
 		self.w._generate_new_haproxy_cfg()
 		with open(self.hacfg_path, 'r') as cfg:
 			content = cfg.read()
-		self.assertIn("    server server-0 192.168.0.1:80", content)
+		self.assertIn("    server server-0 192.168.1.100:80", content)
+		self.assertIn("    server server-1 192.168.1.101:80", content)
 
 
 class TestWatcherunModify(unittest.TestCase):
@@ -95,7 +96,7 @@ class TestWatcherunModify(unittest.TestCase):
 				port=80
 		)
 		with open("etc_haproxy_servers.json", 'w') as f:
-			f.write('["192.168.0.1"]')
+			f.write('["192.168.1.101", "192.168.1.100"]')
 
 	@classmethod
 	def tearDownClass(cls):
@@ -114,10 +115,10 @@ class TestWatcherunModify(unittest.TestCase):
 						"hostname": "value",
 						"launch_index": 0,
 						"meta": {
-							"servers": "[\"192.168.0.1\"]"
+							"autoscaling_networks": '[[{"net-rbHIus": ["192.168.1.101"]},{"net-rbHIus": ["192.168.1.100"]}]]'
 						},
 						"public_keys": {
-							"public": "value Generated-by-Nova\n"
+							"public": "value Generated-by-Nova"
 						},
 						"name": "value"
 					}
@@ -125,14 +126,14 @@ class TestWatcherunModify(unittest.TestCase):
 			)]
 			mock_urlopen.return_value = a
 			res = self.w._get_metadata()
-			assert res == [u'192.168.0.1']
+			assert res == [u'192.168.1.101', u'192.168.1.100']
 
 		mock_metadata()
-		self.assertEqual([u'192.168.0.1'], self.w.metadata_servers)
+		self.assertEqual([u'192.168.1.101', u'192.168.1.100'], self.w.metadata_servers)
 
 	def test_01_get_current_server_list(self):
 		self.w._get_current_server_list()
-		self.assertEqual([u'192.168.0.1'], self.w.haproxy_servers)
+		self.assertEqual([u'192.168.1.101', u'192.168.1.100'], self.w.haproxy_servers)
 
 	def test_02_need_update(self):
 		self.assertFalse(self.w._need_update())
@@ -172,10 +173,10 @@ class TestWatcherEmpty(unittest.TestCase):
 						"hostname": "value",
 						"launch_index": 0,
 						"meta": {
-							"another_key": "[\"192.168.0.1\"]"
+							"autoscaling_networks": '[[]]'
 						},
 						"public_keys": {
-							"public": "value Generated-by-Nova\n"
+							"public": "value Generated-by-Nova"
 						},
 						"name": "value"
 					}
@@ -223,10 +224,10 @@ class TestWatcherInvalidIP(unittest.TestCase):
 						"hostname": "value",
 						"launch_index": 0,
 						"meta": {
-							"servers": "[\"net-jsdfjhsdbf\"]"  # here invalid IP address
+							"autoscaling_networks": '[[{"net-rbHIus": ["titi"]},{"net-rbHIus": ["toto"]}]]'
 						},
 						"public_keys": {
-							"public": "value Generated-by-Nova\n"
+							"public": "value Generated-by-Nova"
 						},
 						"name": "value"
 					}
