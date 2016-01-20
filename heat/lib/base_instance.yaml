@@ -59,3 +59,8 @@ parameters:
     type: string
   flavor:
     type: string
+
+outputs:
+  ip:
+    value:
+      - {get_attr: [instance, first_address]}
