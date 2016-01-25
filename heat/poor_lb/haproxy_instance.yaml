@@ -15,7 +15,7 @@ resources:
     properties:
       cloud_config:
         runcmd:
-          - apt-get update -y
+          - apt-get update -qq
           - apt-get upgrade -y
           - apt-get install -y curl python python-dev haproxy
           - cp /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy_base.cfg
@@ -23,6 +23,8 @@ resources:
           - [ mkdir, -p, /usr/local/src/haproxy ]
           - [ curl, { get_param: insecure }, { get_param: watcher_link }, -o, /usr/local/src/haproxy/watcher.py ]
           - [ chmod, 755, /usr/local/src/haproxy/watcher.py ]
+          - /usr/local/src/haproxy/watcher.py
+          # Maybe add a crontab
 
   multipart:
     depends_on: [ pywatcher ]
