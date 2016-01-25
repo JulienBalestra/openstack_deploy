@@ -52,3 +52,7 @@ parameters:
     type: string
   instance_basename:
     type: string
+
+outputs:
+  ip:
+    value: { get_attr: [ port, fixed_ips ] }
