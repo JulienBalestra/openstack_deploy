@@ -4,9 +4,12 @@ import subprocess
 import argparse
 import urllib2
 import socket
+import re
 
 
 class Watcher(object):
+	reg = re.compile(r'[0-9]+(?:\.[0-9]+){3}')
+
 	def __init__(self, meta_url, hajson_path, hacfg_path, habase_path, port=80, metadata_key="autoscaling_networks"):
 		self.meta_url = meta_url
 		self.metadata_servers = list()
@@ -32,11 +35,12 @@ class Watcher(object):
 		res = urllib2.urlopen(req)
 		metadata = json.loads(res.read())
 		res.close()
-		self.metadata_servers = json.loads(metadata.get('meta', {}).get(self.meta_data_key, '[]'))
+		metadata = json.loads(metadata.get('meta', {}).get(self.meta_data_key, '[]'))
 		try:
-			self.metadata_servers = [k.values()[0][0] for k in self.metadata_servers[0]]
+			self.metadata_servers = self.reg.findall(str(metadata))
 		except TypeError:
 			raise TypeError("%s:%s" % (self.metadata_servers, type(self.metadata_servers)))
+
 		for ip in self.metadata_servers:
 			if self.is_ip(ip) is False:
 				raise TypeError(
