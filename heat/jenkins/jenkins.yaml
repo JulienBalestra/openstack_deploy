@@ -260,16 +260,6 @@ resources:
         runcmd:
           - [ echo, "hello_world" ]
 
-  reverseproxy_userdata:
-    depends_on: [ jenkins_group ]
-    type: OS::Heat::CloudConfig
-    properties:
-      cloud_config:
-        runcmd:
-          - [ echo, "START" ]
-          - apt-get update
-          - apt-get install -y nginx
-
 parameters:
   key_name:
     type: string
