@@ -58,13 +58,15 @@ resources:
               Environment="ETCD_DATA_DIR=/var/etcd/%H.etcd"
               Environment="ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380"
               Environment="ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379"
+              Environment="ETCD_ADVERTISE_CLIENT_URLS=http://0.0.0.0:2379"
               ExecStart=/usr/local/bin/etcd
 
               [Install]
               WantedBy=multi-user.target
         runcmd:
+          - set -x
           - mkdir /tmp/etcd_install || rm -Rf /tmp/etcd_install/*
-          - [curl, {get_param: insecure}, {get_param: etcd_tar}, -o, /tmp/etcd_install/etcd.tar.gz]
+          - [curl, -L, {get_param: insecure}, {get_param: etcd_tar}, -o, /tmp/etcd_install/etcd.tar.gz]
           - cd -P /tmp/etcd_install
           - tar -xzvf /tmp/etcd_install/etcd.tar.gz --strip-components=1
           - cp /tmp/etcd_install/etcd /usr/local/bin/etcd

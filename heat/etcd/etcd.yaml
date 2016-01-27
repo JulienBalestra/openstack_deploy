@@ -233,6 +233,7 @@ resources:
               Environment="ETCD_DATA_DIR=/var/etcd/%H.etcd"
               Environment="ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380"
               Environment="ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379"
+              Environment="ETCD_ADVERTISE_CLIENT_URLS=http://0.0.0.0:2379"
               ExecStart=/usr/local/bin/etcd
 
               [Install]
@@ -248,23 +249,24 @@ resources:
                   #! /bin/bash
                   set -x
                   HOSTNAME=$(curl 169.254.169.254/1.0/meta-data/hostname)
-                  LOCAL_IP=$(curl 169.254.169.254/1.0/meta-data/local-ipv4)
+                  LOCAL_IP=$(curl 169.254.169.254/1.0/meta-data/local-ipv4 | cut -d',' -f 1)
 
-                  etcd -name ${HOSTNAME} \
+                  /usr/local/bin/etcd -name ${HOSTNAME} \
                   --data-dir /var/etcd/${HOSTNAME}.etcd \
                   -initial-advertise-peer-urls http://${LOCAL_IP}:2380 \
                   -listen-peer-urls http://${LOCAL_IP}:2380 \
                   -listen-client-urls http://${LOCAL_IP}:2379,http://127.0.0.1:2379 \
                   -advertise-client-urls http://${LOCAL_IP}:2379 \
                   -discovery http://__etcd_ip__:2379/v2/keys/discovery/__key__
-                  echo $?
+                  # TODO manage the fork and restart the systemctl
 
         runcmd:
           #- apt-get update
           #- apt-get upgrade -y
+          - set -x
           - apt-get install -y jq
           - mkdir /tmp/etcd_install || rm -Rf /tmp/etcd_install/*
-          - [curl, {get_param: insecure}, {get_param: etcd_tar}, -o, /tmp/etcd_install/etcd.tar.gz]
+          - [curl, -L, {get_param: insecure}, {get_param: etcd_tar}, -o, /tmp/etcd_install/etcd.tar.gz]
           - cd -P /tmp/etcd_install
           - tar -xzvf /tmp/etcd_install/etcd.tar.gz --strip-components=1
           - cp /tmp/etcd_install/etcd /usr/local/bin/etcd
@@ -319,9 +321,11 @@ parameters:
     description: image=debian-8-2016-01-01
   etcd_tar:
     type: string
+    description: https://github.com/coreos/etcd/releases/version/arch.tar.gz
   insecure:
     type: string
     default: "--insecure"
+    description: Warning with curl command for https
   etcd_size:
     type: number
     default: 3
