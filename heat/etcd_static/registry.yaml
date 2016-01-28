@@ -1,0 +1,4 @@
+resource_registry:
+  "lib::BaseInstance": ../lib/base_instance.yaml
+  "lib::FIPInstance": ../lib/fip_instance.yaml
+  "EtcdStatic": etcd_static.yaml
