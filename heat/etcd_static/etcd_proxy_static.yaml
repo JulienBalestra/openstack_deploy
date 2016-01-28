@@ -7,7 +7,7 @@ resources:
   random:
     type: OS::Heat::RandomString
     properties:
-      length: 10
+      length: 8
       sequence: lettersdigits
 
   floating:
