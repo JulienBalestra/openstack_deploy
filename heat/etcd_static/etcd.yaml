@@ -1,7 +1,7 @@
 heat_template_version: 2014-10-16
 
 description: >
-  Build a static etcd2 cluster with 3 members.
+  Build a static etcd2 cluster with 3 members and 1 proxy (demo)
 
 resources:
   random:
@@ -96,6 +96,32 @@ resources:
             protocol: icmp
             direction: ingress
 
+  proxy_securitygroup:
+      depends_on: [ random ]
+      type: OS::Neutron::SecurityGroup
+      properties:
+        name:
+          str_replace:
+            template: ctx%ress%-rand%
+            params:
+              "ctx%": {get_param: context}
+              "ress%": "proxy"
+              "rand%": { get_attr: [random, value] }
+        rules:
+          - remote_ip_prefix: {get_param: subnet_cidr}
+            protocol: tcp
+            port_range_min: 22
+            port_range_max: 22
+            direction: ingress
+          - remote_ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            port_range_min: 80
+            port_range_max: 80
+            direction: ingress
+          - remote_ip_prefix: 0.0.0.0/0
+            protocol: icmp
+            direction: ingress
+
   bastion_securitygroup:
       depends_on: [ random ]
       type: OS::Neutron::SecurityGroup
@@ -182,12 +208,56 @@ resources:
                 "ress%": "etcd_member_static"
                 "rand%": { get_attr: [random, value] }
 
+  proxy_anti:
+    depends_on: [ random ]
+    type: OS::Nova::ServerGroup
+    properties:
+      name:
+        str_replace:
+          template: ctx%ress%-rand%
+          params:
+            "ctx%": {get_param: context}
+            "ress%": "etcd_static"
+            "rand%": { get_attr: [random, value] }
+      policies: ["anti-affinity"] # Beware about the number of compute nodes
+
+  proxy_group:
+    depends_on: [ interface, proxy_securitygroup, proxy_anti ]
+    type: OS::Heat::AutoScalingGroup
+    properties:
+      min_size: 1
+      max_size: 6
+      rolling_updates: {"max_batch_size": 1, "min_in_service": 2, "pause_time": 60}
+      resource:
+        type: "EtcdProxy"
+        properties:
+          anti_affinity: { get_resource: proxy_anti }
+          key_name: { get_param: key_name }
+          security_group: { get_resource: proxy_securitygroup }
+          network: { get_resource: network }
+          subnet: { get_resource: subnet }
+          flavor: { get_param: flavor }
+          image: { get_param: image }
+          instance_basename:
+            str_replace:
+             template: ctx%rand%-ress%
+             params:
+               "ctx%": {get_param: context}
+               "rand%": { get_attr: [random, value] }
+               "ress%": "etcd_proxy"
+          insecure: {get_param: insecure}
+          etcd_tar: {get_param: etcd_tar}
+          prefix: {get_param: prefix}
+          floatingip_network_name: { get_param: floatingip_network_name }
+
   bastion_userdata:
     type: OS::Heat::CloudConfig
     properties:
       cloud_config:
         runcmd:
-          - [ echo, "hello_world" ]
+          - apt-get update
+          - apt-get upgrade -y
+          - apt-get install -y curl jq
 
 parameters:
   context:
@@ -234,6 +304,7 @@ parameters:
   prefix:
     type: string
     default: "192.168.1.1"
+    description: Ugly way to stay DRY
   etcd_tar:
     type: string
     description: https://github.com/coreos/etcd/releases/version/arch.tar.gz

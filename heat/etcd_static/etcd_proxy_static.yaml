@@ -10,6 +10,13 @@ resources:
       length: 10
       sequence: lettersdigits
 
+  floating:
+    type: OS::Neutron::FloatingIP
+    depends_on: [ port ]
+    properties:
+      floating_network: { get_param: floatingip_network_name }
+      port_id: { get_resource: port }
+
   port:
     depends_on: [ random ]
     type: OS::Neutron::Port
@@ -23,19 +30,18 @@ resources:
       network_id: { get_param: network }
       fixed_ips:
         - subnet_id: { get_param: subnet }
-          ip_address:
-            str_replace:
-              template: prefix%index%
-              params:
-                "prefix%": { get_param: prefix }
-                "index%":  { get_param: index }
       security_groups: [ { get_param: security_group } ]
 
   instance:
     depends_on: [ port, etcd_userdata ]
     type: OS::Nova::Server
     properties:
-      name: { get_param: instance_basename }
+      name:
+        str_replace:
+          template: bn%-rand%
+          params:
+            "bn%": { get_param: instance_basename }
+            "rand%": { get_attr: [random, value] }
       key_name: { get_param: key_name }
       image: { get_param: image }
       flavor: { get_param: flavor }
@@ -45,7 +51,6 @@ resources:
       user_data: { get_resource: etcd_userdata }
       scheduler_hints:
         group: { get_param: anti_affinity }
-
 
   etcd_userdata:
     type: OS::Heat::CloudConfig
@@ -57,9 +62,7 @@ resources:
             content:
               str_replace:
                 params:
-                  __index__: { get_param: index }
                   __prefix__: { get_param: prefix }
-                  __token__: { get_param: token }
                 template: |
                   [Unit]
                   Description=etcd2
@@ -68,15 +71,10 @@ resources:
                   [Service]
                   Type=notify
                   ExecStart=/usr/bin/etcd \
-                    -name static__index__ \
+                    -proxy on \
                     -data-dir /var/lib/etcd2 \
-                    -initial-advertise-peer-urls http://__prefix____index__:2380 \
-                    -listen-peer-urls http://__prefix____index__:2380 \
-                    -listen-client-urls http://__prefix____index__:2379,http://127.0.0.1:2379 \
-                    -advertise-client-urls http://__prefix____index__:2379 \
-                    -initial-cluster-token __token__ \
-                    -initial-cluster static0=http://__prefix__0:2380,static1=http://__prefix__1:2380,static2=http://__prefix__2:2380 \
-                    -initial-cluster-state new
+                    -listen-client-urls http://0.0.0.0:8080 \
+                    -initial-cluster static0=http://__prefix__0:2380,static1=http://__prefix__1:2380,static2=http://__prefix__2:2380
                   Restart=always
                   RestartSec=10s
                   LimitNOFILE=40000
@@ -84,18 +82,45 @@ resources:
 
                   [Install]
                   WantedBy=multi-user.target
+          - path: /tmp/nginx_etcd_proxy
+            permissions: 0644
+            content:
+              str_replace:
+                params:
+                  __instance_basename__:
+                    str_replace:
+                      template: bn%-rand%
+                      params:
+                        "bn%": { get_param: instance_basename }
+                        "rand%": { get_attr: [random, value] }
+                template: |
+                  server {
+                          listen   80;
+                          server_name     __instance_basename__;
+                          location / {
+                                  proxy_pass         http://127.0.0.1:8080/;
+
+                          }
+                  }
         runcmd:
           - set -x
+          - apt-get update
+          #- apt-get upgrade -y
+          - apt-get install -y curl jq nginx
           - mkdir /tmp/etcd_install || rm -Rf /tmp/etcd_install/*
           - [curl, -L, {get_param: insecure}, {get_param: etcd_tar}, -o, /tmp/etcd_install/etcd.tar.gz]
           - cd -P /tmp/etcd_install
           - tar -xzvf /tmp/etcd_install/etcd.tar.gz --strip-components=1
-          - cp /tmp/etcd_install/etcd /usr/bin/etcd
-          - cp /tmp/etcd_install/etcdctl /usr/bin/etcdctl
+          - mv /tmp/etcd_install/etcd /usr/bin/etcd
+          - mv /tmp/etcd_install/etcdctl /usr/bin/etcdctl
           - mkdir -p /var/lib/etcd2
+          - mv /tmp/nginx_etcd_proxy /etc/nginx/sites-available/default
+          - service nginx reload && echo $?
           - systemctl daemon-reload
           - systemctl enable etcd.service
           - systemctl start etcd.service
+          - systemctl status etcd.service
+
 
 parameters:
   instance_basename:
@@ -118,14 +143,7 @@ parameters:
     type: string
   prefix:
     type: string
-  token:
-    type: string
   anti_affinity:
     type: string
-  index:
-    type: number
-
-outputs:
-  ip:
-    value:
-      - {get_attr: [instance, first_address]}
+  floatingip_network_name:
+    type: string
