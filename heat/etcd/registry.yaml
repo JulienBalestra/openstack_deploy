@@ -1,4 +1,0 @@
-resource_registry:
-  "lib::BaseInstance": ../lib/base_instance.yaml
-  "lib::FIPInstance": ../lib/fip_instance.yaml
-  "lib::EtcdDiscover": ../lib/etcd_discover.yaml
