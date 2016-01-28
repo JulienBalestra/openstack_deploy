@@ -146,7 +146,7 @@ resources:
         type: "lib::BaseInstance"
         properties:
           key_name: { get_param: key_name }
-          security_group: { get_resource: bastion_securitygroup }
+          security_group: { get_resource: toscale_securitygroup }
           network: { get_resource: network }
           subnet: { get_resource: subnet }
           userdata: { get_resource: toscale_userdata }
