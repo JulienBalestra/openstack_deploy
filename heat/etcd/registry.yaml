@@ -1,0 +1,6 @@
+resource_registry:
+  "lib::BaseInstance": ../lib/base_instance.yaml
+  "lib::FIPInstance": ../lib/fip_instance.yaml
+  "EtcdStatic": etcd_member_static.yaml
+  "EtcdProxy": etcd_proxy_static.yaml
+  "EtcdDiscovery": etcd_member_discovery.yaml
