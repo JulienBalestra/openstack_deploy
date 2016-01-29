@@ -56,13 +56,26 @@ resources:
     type: OS::Heat::CloudConfig
     properties:
       cloud_config:
+        package_update: true
+        package_upgrade: false
+        packages:
+         - curl
+         - jq
+         - tar
+         - nginx
         write_files:
           - path: /lib/systemd/system/etcd.service
             permissions: 0644
             content:
               str_replace:
                 params:
-                  __prefix__: { get_param: prefix }
+                  __discovery__: { get_param: get_discovery }
+                  __instance_basename__:
+                    str_replace:
+                      template: bn%-rand%
+                      params:
+                        "bn%": { get_param: instance_basename }
+                        "rand%": { get_attr: [random, value] }
                 template: |
                   [Unit]
                   Description=etcd2
@@ -71,10 +84,11 @@ resources:
                   [Service]
                   Type=notify
                   ExecStart=/usr/bin/etcd \
+                    -name __instance_basename__ \
                     -proxy on \
                     -data-dir /var/lib/etcd2 \
-                    -listen-client-urls http://0.0.0.0:8080 \
-                    -initial-cluster static0=http://__prefix__0:2380,static1=http://__prefix__1:2380,static2=http://__prefix__2:2380
+                    -listen-client-urls http://127.0.0.1:8080 \
+                    -discovery __discovery__
                   Restart=always
                   RestartSec=10s
                   LimitNOFILE=40000
@@ -104,9 +118,6 @@ resources:
                   }
         runcmd:
           - set -x
-          - apt-get update
-          #- apt-get upgrade -y
-          - apt-get install -y curl jq nginx
           - mkdir /tmp/etcd_install || rm -Rf /tmp/etcd_install/*
           - [curl, -L, {get_param: insecure}, {get_param: etcd_tar}, -o, /tmp/etcd_install/etcd.tar.gz]
           - cd -P /tmp/etcd_install
@@ -141,9 +152,9 @@ parameters:
     type: string
   etcd_tar:
     type: string
-  prefix:
-    type: string
   anti_affinity:
+    type: string
+  get_discovery:
     type: string
   floatingip_network_name:
     type: string
