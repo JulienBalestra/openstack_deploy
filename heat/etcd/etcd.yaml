@@ -3,6 +3,7 @@ heat_template_version: 2014-10-16
 description: >
   1) Build static cluster
   2) Build discovery over static
+  3) Build proxy over static for discovery
 
 resources:
   random:
@@ -217,7 +218,7 @@ resources:
     depends_on: [ interface, etcd_securitygroup, static_token, etcd_static_anti ]
     type: OS::Heat::ResourceGroup
     properties:
-      count: { get_param: etcd_static_size }
+      count: 3
       resource_def:
         type: "EtcdStatic"
         properties:
@@ -382,11 +383,6 @@ parameters:
     type: string
     label: The debian image based for Instances
     description: image=debian-8-2016-01-01
-  etcd_static_size:
-    type: number
-    default: 3
-    constraints:
-      - range: { min: 1, max: 9 }
   etcd_discovery_size:
     type: number
     default: 3
@@ -399,7 +395,7 @@ parameters:
       - range: { min: 0, max: 2 }
   static_prefix:
     type: string
-    default: "192.168.1.1" # [ "%s%d" for k in range(0, etcd_static_size) ]
+    default: "192.168.1.1" # [ "%s%d" for k in range(3) ]
     description: Ugly way to stay DRY
     constraints:
       - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,2}"
