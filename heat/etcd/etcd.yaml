@@ -1,7 +1,8 @@
 heat_template_version: 2014-10-16
 
 description: >
-  Build a static etcd2 cluster with 3 members and 1 proxy (demo)
+  1) Build static cluster
+  2) Build discovery over static
 
 resources:
   random:
