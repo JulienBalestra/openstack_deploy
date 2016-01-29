@@ -206,7 +206,7 @@ resources:
     depends_on: [ etcd_static_group, discovery_token, etcd_discovery_anti ]
     type: OS::Heat::AutoScalingGroup
     properties:
-      min_size: 3
+      min_size: 2
       desired_capacity: { get_param: etcd_discovery_size }
       max_size: 5
       rolling_updates: {"max_batch_size": 1, "min_in_service": 1, "pause_time": 60}
