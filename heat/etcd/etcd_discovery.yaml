@@ -57,12 +57,44 @@ resources:
          - jq
          - tar
         write_files:
+          - path: /lib/systemd/system/etcd-proxy-static.service
+            permissions: 0644
+            content:
+              str_replace:
+                params:
+                  __static_endpoint__: { get_param: static_endpoint }
+                  __instance_basename__:
+                    str_replace:
+                      template: bn%-rand%
+                      params:
+                        "bn%": { get_param: instance_basename }
+                        "rand%": { get_attr: [random, value] }
+                template: |
+                  [Unit]
+                  Description=etcd2 static proxy
+                  Conflicts=etcd-proxy-static.service
+
+                  [Service]
+                  Type=idle
+                  ExecStart=/usr/bin/etcd \
+                    -name __instance_basename__ \
+                    -proxy on \
+                    -data-dir /var/lib/etcd2_proxy_static \
+                    -listen-client-urls http://127.0.0.1:8081 \
+                    -initial-cluster __static_endpoint__
+                  Restart=always
+                  RestartSec=10s
+                  LimitNOFILE=40000
+                  TimeoutStartSec=0
+
+                  [Install]
+                  WantedBy=multi-user.target
           - path: /lib/systemd/system/etcd.service
             permissions: 0644
             content:
               str_replace:
                 params:
-                  __discovery__: { get_param: get_discovery }
+                  __token__: { get_param: token }
                   __ip_address__: { get_attr: [port, fixed_ips, 0, ip_address] }
                   __instance_basename__:
                     str_replace:
@@ -74,6 +106,7 @@ resources:
                   [Unit]
                   Description=etcd2
                   Conflicts=etcd.service
+                  Requires=etcd-proxy-static.service
 
                   [Service]
                   Type=notify
@@ -84,7 +117,7 @@ resources:
                     -listen-peer-urls http://__ip_address__:2380 \
                     -listen-client-urls http://__ip_address__:2379,http://127.0.0.1:2379 \
                     -advertise-client-urls http://__ip_address__:2379 \
-                    -discovery __discovery__
+                    -discovery http://localhost:8081/v2/keys/discovery/__token__
                   Restart=always
                   RestartSec=10s
                   LimitNOFILE=40000
@@ -100,12 +133,14 @@ resources:
           - tar -xzvf /tmp/etcd_install/etcd.tar.gz --strip-components=1
           - mv /tmp/etcd_install/etcd /usr/bin/etcd
           - mv /tmp/etcd_install/etcdctl /usr/bin/etcdctl
-          - mkdir -p /var/lib/etcd2
-          - [ curl, -s, -XPUT, {get_param: create_discovery}, -d, value=3 ]
+          - mkdir -p /var/lib/etcd2 && mkdir -p /var/lib/etcd2_proxy_static
           - systemctl daemon-reload
+          - systemctl enable etcd-proxy-static.service
+          - systemctl start etcd-proxy-static.service && systemctl status etcd-proxy-static.service
           - systemctl enable etcd.service
-          - systemctl start etcd.service
-          - systemctl status etcd.service
+          - until curl localhost:8081 ; do sleep 10 ; done
+          - [ curl, -s, -XPUT, {get_param: create_discovery}, -d, {get_param: value_etcd_size} ] # TODO
+          - systemctl start etcd.service && systemctl status etcd.service
 
 
 parameters:
@@ -129,9 +164,11 @@ parameters:
     type: string
   create_discovery:
     type: string
-  get_discovery:
-    type: string
-  etcd_size:
+  value_etcd_size:
     type: string
   anti_affinity:
+    type: string
+  static_endpoint:
+    type: string
+  token:
     type: string

@@ -65,8 +65,7 @@ resources:
               str_replace:
                 params:
                   __index__: { get_param: index }
-                  __prefix__: { get_param: prefix }
-                  __token__: { get_param: token }
+                  __static_endpoint__: { get_param: static_endpoint }
                   __ip_address__: { get_attr: [port, fixed_ips, 0, ip_address] }
                 template: |
                   [Unit]
@@ -83,7 +82,7 @@ resources:
                     -listen-client-urls http://__ip_address__:2379,http://127.0.0.1:2379 \
                     -advertise-client-urls http://__ip_address__:2379 \
                     -initial-cluster-token __token__ \
-                    -initial-cluster static0=http://__prefix__0:2380,static1=http://__prefix__1:2380,static2=http://__prefix__2:2380 \
+                    -initial-cluster __static_endpoint__ \
                     -initial-cluster-state new
                   Restart=always
                   RestartSec=10s
@@ -133,6 +132,8 @@ parameters:
     type: string
   index:
     type: number
+  static_endpoint:
+    type: string
 
 outputs:
   ip:

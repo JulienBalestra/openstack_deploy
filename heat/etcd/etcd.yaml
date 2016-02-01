@@ -2,8 +2,8 @@ heat_template_version: 2014-10-16
 
 description: >
   1) Build static cluster
-  2) Build discovery over static
-  3) Build proxy over static for discovery
+  2) Build discovery over static with etcd proxy client
+  3) Build vulcand over static with etcd proxy for discovery backend
 
 resources:
   random:
@@ -104,7 +104,7 @@ resources:
             protocol: icmp
             direction: ingress
 
-  proxy_securitygroup:
+  vulcand_proxy_securitygroup:
       depends_on: [ random ]
       type: OS::Neutron::SecurityGroup
       properties:
@@ -113,20 +113,25 @@ resources:
             template: ctx%ress%-rand%
             params:
               "ctx%": {get_param: context}
-              "ress%": "proxy"
+              "ress%": "vulcand_proxy"
               "rand%": { get_attr: [random, value] }
         rules:
-          - remote_ip_prefix: {get_param: subnet_cidr}
+          - remote_ip_prefix: 0.0.0.0/0 # TODO
             protocol: tcp
             port_range_min: 22
             port_range_max: 22
+            direction: ingress
+          - remote_ip_prefix: {get_param: subnet_cidr}
+            protocol: tcp
+            port_range_min: 8080
+            port_range_max: 8080
             direction: ingress
           - remote_ip_prefix: 0.0.0.0/0
             protocol: tcp
             port_range_min: 80
             port_range_max: 80
             direction: ingress
-          - remote_ip_prefix: 0.0.0.0/0
+          - remote_ip_prefix: {get_param: subnet_cidr}
             protocol: icmp
             direction: ingress
 
@@ -201,7 +206,7 @@ resources:
             "rand%": { get_attr: [random, value] }
       policies: ["anti-affinity"] # Beware about the number of compute nodes
 
-  proxy_anti:
+  vulcand_proxy_anti:
     depends_on: [ random ]
     type: OS::Nova::ServerGroup
     properties:
@@ -210,7 +215,7 @@ resources:
           template: ctx%ress%-rand%
           params:
             "ctx%": {get_param: context}
-            "ress%": "etcd_proxy"
+            "ress%": "vulcand_proxy"
             "rand%": { get_attr: [random, value] }
       policies: ["anti-affinity"] # Beware about the number of compute nodes
 
@@ -241,12 +246,18 @@ resources:
                 "ctx%": {get_param: context}
                 "ress%": "etcd_static"
                 "rand%": { get_attr: [random, value] }
+          static_endpoint:
+            str_replace:
+             template: __stn__0=http://__prefix__0:2380,__stn__1=http://__prefix__1:2380,__stn__2=http://__prefix__2:2380
+             params:
+               __stn__: {get_param: static_name}
+               __prefix__: {get_param: static_prefix}
 
   etcd_discovery_group:
     depends_on: [ etcd_static_group, discovery_token, etcd_discovery_anti ]
     type: OS::Heat::AutoScalingGroup
     properties:
-      min_size: 2
+      min_size: 3
       desired_capacity: { get_param: etcd_discovery_size }
       max_size: 5
       rolling_updates: {"max_batch_size": 1, "min_in_service": 1, "pause_time": 60}
@@ -271,36 +282,36 @@ resources:
           etcd_tar: {get_param: etcd_tar}
           create_discovery:
             str_replace:
-              template: http://__prefix__0:2379/v2/keys/discovery/__token__/_config/size?prevExist=false
+              template: http://localhost:8081/v2/keys/discovery/__token__/_config/size?prevExist=false
               params:
-                __prefix__: {get_param: static_prefix}
                 __token__: { get_attr: [discovery_token, value] }
-          get_discovery:
+          token: { get_attr: [discovery_token, value] }
+          value_etcd_size:
             str_replace:
-              template: http://__prefix__0:2379/v2/keys/discovery/__token__
-              params:
-                __prefix__: {get_param: static_prefix}
-                __token__: { get_attr: [discovery_token, value] }
-          etcd_size:
-            str_replace:
-              template: size=__size__
+              template: value=__size__
               params:
                 __size__: {get_param: etcd_discovery_size}
+          static_endpoint:
+            str_replace:
+             template: __stn__0=http://__prefix__0:2380,__stn__1=http://__prefix__1:2380,__stn__2=http://__prefix__2:2380
+             params:
+               __stn__: {get_param: static_name}
+               __prefix__: {get_param: static_prefix}
 
-  proxy_group:
-    depends_on: [ etcd_static_group, discovery_token, proxy_securitygroup, proxy_anti ]
+  vulcand_proxy_group:
+    depends_on: [ etcd_static_group, discovery_token, vulcand_proxy_securitygroup, vulcand_proxy_anti ]
     type: OS::Heat::AutoScalingGroup
     properties:
       min_size: 1
-      desired_capacity: 1
+      desired_capacity: { get_param: vulcand_proxy_size }
       max_size: 5
       rolling_updates: {"max_batch_size": 1, "min_in_service": 1, "pause_time": 60}
       resource:
-        type: "EtcdProxy"
+        type: "VulcandProxy"
         properties:
-          anti_affinity: { get_resource: proxy_anti }
+          anti_affinity: { get_resource: vulcand_proxy_anti }
           key_name: { get_param: key_name }
-          security_group: { get_resource: proxy_securitygroup }
+          security_group: { get_resource: vulcand_proxy_securitygroup }
           network: { get_resource: network }
           subnet: { get_resource: subnet }
           flavor: { get_param: flavor }
@@ -311,16 +322,24 @@ resources:
              params:
                "ctx%": {get_param: context}
                "rand%": { get_attr: [random, value] }
-               "ress%": "etcd_proxy"
+               "ress%": "vulcand_proxy"
           insecure: {get_param: insecure}
-          etcd_tar: {get_param: etcd_tar}
+          vulcand_tar: {get_param: vulcand_tar}
           get_discovery:
             str_replace:
               template: http://__prefix__0:2379/v2/keys/discovery/__token__
               params:
                 __prefix__: {get_param: static_prefix}
                 __token__: { get_attr: [discovery_token, value] }
+          etcd_tar: {get_param: etcd_tar}
           floatingip_network_name: { get_param: floatingip_network_name }
+          static_endpoint:
+            str_replace:
+             template: __stn__0=http://__prefix__0:2380,__stn__1=http://__prefix__1:2380,__stn__2=http://__prefix__2:2380
+             params:
+               __stn__: {get_param: static_name}
+               __prefix__: {get_param: static_prefix}
+
 
   bastion_userdata:
     type: OS::Heat::CloudConfig
@@ -387,12 +406,24 @@ parameters:
     type: number
     default: 3
     constraints:
+    - type: Choice
+      description: must be a valid instance type
+      values:
+      - 3
+      - 5
+      - 9
+    constraints:
       - range: { min: 3 }
   bastion_size:
     type: number
     default: 1
     constraints:
       - range: { min: 0, max: 2 }
+  vulcand_proxy_size:
+    type: number
+    default: 2
+    constraints:
+      - range: { min: 2 }
   static_prefix:
     type: string
     default: "192.168.1.1" # [ "%s%d" for k in range(3) ]
@@ -400,9 +431,15 @@ parameters:
     constraints:
       - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,2}"
         description: Must be a custom IP address (192.168.1.1 || 192.168.1.10) && ! 192.168.1.100
+  static_name:
+    type: string
+    default: "static"
   etcd_tar:
     type: string
-    description: https://github.com/coreos/etcd/releases/version/arch.tar.gz
+    description: "https://github.com/coreos/etcd/releases/version/arch.tar.gz"
+  vulcand_tar:
+    type: string
+    description: "https://github.com/emilevauge/traefik/releases/.../arch.tar.gz"
   insecure:
     type: string
     default: "--insecure"

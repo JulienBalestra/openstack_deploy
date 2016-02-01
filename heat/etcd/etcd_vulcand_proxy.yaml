@@ -1,7 +1,7 @@
 heat_template_version: 2014-10-16
 
 description: >
-  Instance with UserData
+  Instance for proxy etcd
 
 resources:
   random:
@@ -62,9 +62,8 @@ resources:
          - curl
          - jq
          - tar
-         - nginx
         write_files:
-          - path: /lib/systemd/system/etcd.service
+          - path: /lib/systemd/system/etcd-proxy-discovery.service
             permissions: 0644
             content:
               str_replace:
@@ -78,15 +77,16 @@ resources:
                         "rand%": { get_attr: [random, value] }
                 template: |
                   [Unit]
-                  Description=etcd2
-                  Conflicts=etcd.service
+                  Description=etcd2 discovery proxy
+                  Conflicts=etcd-proxy-discovery.service
+                  Requires=etcd-proxy-static.service
 
                   [Service]
-                  Type=notify
+                  Type=idle
                   ExecStart=/usr/bin/etcd \
                     -name __instance_basename__ \
                     -proxy on \
-                    -data-dir /var/lib/etcd2 \
+                    -data-dir /var/lib/etcd2_proxy_discovery \
                     -listen-client-urls http://127.0.0.1:8080 \
                     -discovery __discovery__
                   Restart=always
@@ -96,11 +96,12 @@ resources:
 
                   [Install]
                   WantedBy=multi-user.target
-          - path: /tmp/nginx_etcd_proxy
+          - path: /lib/systemd/system/etcd-proxy-static.service
             permissions: 0644
             content:
               str_replace:
                 params:
+                  __static_endpoint__: { get_param: static_endpoint }
                   __instance_basename__:
                     str_replace:
                       template: bn%-rand%
@@ -108,14 +109,44 @@ resources:
                         "bn%": { get_param: instance_basename }
                         "rand%": { get_attr: [random, value] }
                 template: |
-                  server {
-                          listen   80;
-                          server_name     __instance_basename__;
-                          location / {
-                                  proxy_pass         http://127.0.0.1:8080/;
+                  [Unit]
+                  Description=etcd2 static proxy
+                  Conflicts=etcd-proxy-static.service
 
-                          }
-                  }
+                  [Service]
+                  Type=idle
+                  ExecStart=/usr/bin/etcd \
+                    -name __instance_basename__ \
+                    -proxy on \
+                    -data-dir /var/lib/etcd2_proxy_static \
+                    -listen-client-urls http://127.0.0.1:8081 \
+                    -initial-cluster __static_endpoint__
+                  Restart=always
+                  RestartSec=10s
+                  LimitNOFILE=40000
+                  TimeoutStartSec=0
+
+                  [Install]
+                  WantedBy=multi-user.target
+          - path: /lib/systemd/system/vulcand.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=vulcand
+              Conflicts=vulcand.service
+              Requires=etcd-proxy-discovery.service
+
+              [Service]
+              Type=notify
+              ExecStart=/usr/bin/vulcand \
+                -etcd=http://127.0.0.1:8081
+              Restart=always
+              RestartSec=15s
+              LimitNOFILE=40000
+              TimeoutStartSec=0
+
+              [Install]
+              WantedBy=multi-user.target
         runcmd:
           - set -x
           - mkdir /tmp/etcd_install || rm -Rf /tmp/etcd_install/*
@@ -124,13 +155,19 @@ resources:
           - tar -xzvf /tmp/etcd_install/etcd.tar.gz --strip-components=1
           - mv /tmp/etcd_install/etcd /usr/bin/etcd
           - mv /tmp/etcd_install/etcdctl /usr/bin/etcdctl
-          - mkdir -p /var/lib/etcd2
-          - mv /tmp/nginx_etcd_proxy /etc/nginx/sites-available/default
-          - service nginx reload && echo $?
+          - mkdir -p /var/lib/etcd2_proxy_static && mkdir -p /var/lib/etcd2_proxy_discovery
           - systemctl daemon-reload
-          - systemctl enable etcd.service
-          - systemctl start etcd.service
-          - systemctl status etcd.service
+          - systemctl enable etcd-proxy-static.service && systemctl start etcd-proxy-static.service
+          - systemctl enable etcd-proxy-discovery.service && systemctl start etcd-proxy-discovery.service
+
+          - mkdir /tmp/vulcand_install || rm -Rf /tmp/vulcand_install/*
+          - [curl, -L, {get_param: insecure}, {get_param: vulcand_tar}, -o, /tmp/vulcand_install/vulcand.tar.gz]
+          - cd -P /tmp/vulcand_install
+          - tar -xzvf /tmp/vulcand_install/vulcand.tar.gz --strip-components=1
+          - mv /tmp/vulcand_install/vulcand /usr/bin/vulcand
+          - mv /tmp/vulcand_install/vctl /usr/bin/vctl
+          - mv /tmp/vulcand_install/vbundle /usr/bin/vbundle
+          - systemctl enable vulcand.service && systemctl start vulcand.service
 
 
 parameters:
@@ -154,7 +191,11 @@ parameters:
     type: string
   anti_affinity:
     type: string
-  get_discovery:
-    type: string
   floatingip_network_name:
+    type: string
+  vulcand_tar:
+    type: string
+  static_endpoint:
+    type: string
+  get_discovery:
     type: string
