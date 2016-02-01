@@ -139,7 +139,7 @@ resources:
           - systemctl start etcd-proxy-static.service && systemctl status etcd-proxy-static.service
           - systemctl enable etcd.service
           - until curl localhost:8081 ; do sleep 10 ; done
-          - [ curl, -s, -XPUT, {get_param: create_discovery}, -d, {get_param: value_etcd_size} ] # TODO
+          - [ curl, -s, -XPUT, {get_param: create_discovery}, -d, {get_param: value_etcd_size} ]
           - systemctl start etcd.service && systemctl status etcd.service
 
 
