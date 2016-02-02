@@ -569,11 +569,15 @@ parameters:
     type: string
     label: The flavor for Instances
     description: flavor=m1.medium
+    constraints:
+      - custom_constraint: nova.flavor
 
   image:
     type: string
     label: The debian image based for Instances
     description: image=debian-8-2016-01-01
+    constraints:
+      - custom_constraint: glance.image
 
   etcd_discovery_size:
     type: number
