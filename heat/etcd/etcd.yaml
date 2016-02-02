@@ -377,7 +377,7 @@ resources:
           etcd_tar: {get_param: etcd_tar}
           create_discovery:
             str_replace:
-              template: http://localhost:8081/v2/keys/discovery/__token__/_config/size?prevExist=false
+              template: http://127.0.0.1:8081/v2/keys/discovery/__token__/_config/size?prevExist=false
               params:
                 __token__: { get_attr: [discovery_token, value] }
           token: { get_attr: [discovery_token, value] }
