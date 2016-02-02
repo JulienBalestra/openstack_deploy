@@ -69,6 +69,7 @@ resources:
               str_replace:
                 params:
                   __discovery__: { get_param: get_discovery }
+                  __discovery_proxy_bind__: { get_param: discovery_proxy_bind }
                   __instance_basename__:
                     str_replace:
                       template: bn%-rand%
@@ -87,7 +88,7 @@ resources:
                     -name __instance_basename__ \
                     -proxy on \
                     -data-dir /var/lib/etcd2_proxy_discovery \
-                    -listen-client-urls http://127.0.0.1:8080 \
+                    -listen-client-urls __discovery_proxy_bind__ \
                     -discovery __discovery__
                   Restart=always
                   RestartSec=10s
@@ -102,6 +103,7 @@ resources:
               str_replace:
                 params:
                   __static_endpoint__: { get_param: static_endpoint }
+                  __static_proxy_bind__: { get_param: static_proxy_bind }
                   __instance_basename__:
                     str_replace:
                       template: bn%-rand%
@@ -119,7 +121,7 @@ resources:
                     -name __instance_basename__ \
                     -proxy on \
                     -data-dir /var/lib/etcd2_proxy_static \
-                    -listen-client-urls http://127.0.0.1:8081 \
+                    -listen-client-urls __static_proxy_bind__ \
                     -initial-cluster __static_endpoint__
                   Restart=always
                   RestartSec=10s
@@ -130,23 +132,65 @@ resources:
                   WantedBy=multi-user.target
           - path: /lib/systemd/system/vulcand.service
             permissions: 0644
-            content: |
-              [Unit]
-              Description=vulcand
-              Conflicts=vulcand.service
-              Requires=etcd-proxy-discovery.service
+            content:
+              str_replace:
+                params:
+                  __static_proxy_bind__: { get_param: static_proxy_bind }
+                template: |
+                  [Unit]
+                  Description=vulcand
+                  Conflicts=vulcand.service
+                  Requires=etcd-proxy-discovery.service
 
-              [Service]
-              Type=notify
-              ExecStart=/usr/bin/vulcand \
-                -etcd=http://127.0.0.1:8081
-              Restart=always
-              RestartSec=15s
-              LimitNOFILE=40000
-              TimeoutStartSec=0
+                  [Service]
+                  Type=idle
+                  ExecStart=/usr/bin/vulcand \
+                    -etcd=__static_proxy_bind__ \
+                    -port=80
+                  Restart=always
+                  RestartSec=15s
+                  LimitNOFILE=40000
+                  TimeoutStartSec=0
 
-              [Install]
-              WantedBy=multi-user.target
+                  [Install]
+                  WantedBy=multi-user.target
+          - path: /etc/vulcand_rules
+            permissions: 0544
+            content:
+              str_replace:
+                params:
+                  __static_proxy_bind__: { get_param: static_proxy_bind }
+                  __discovery_proxy_bind__: { get_param: discovery_proxy_bind }
+                template: |
+                  #! /bin/bash
+
+
+                  STATIC_PROXY=__static_proxy_bind__
+                  DISCOVERY_PROXY=__discovery_proxy_bind__
+                  UPSERT=?prevExist=false
+
+                  for i in {0..20}
+                  do
+                    curl ${STATIC_PROXY}
+                    if [ $? -eq 0 ]
+                    then
+                      echo "loop ${i} -> ${STATIC_PROXY} READY ret: $?"
+                      break
+                    fi
+                    echo "loop ${i} -> ${STATIC_PROXY} not ready ret: $?"
+                    sleep 10
+                  done
+
+                  set -x
+                  curl -XPUT ${STATIC_PROXY}/v2/keys/vulcand/backends/b1/backend${UPSERT} \
+                    -d value='{"Type": "http"}'
+
+                  curl -XPUT ${STATIC_PROXY}/v2/keys/vulcand/backends/b1/servers/srv1${UPSERT} \
+                    -d value="{\"URL\": \"${DISCOVERY_PROXY}\" }"
+
+                  curl -XPUT ${STATIC_PROXY}/v2/keys/vulcand/frontends/f1/frontend${UPSERT} \
+                    -d value='{"Type": "http", "BackendId": "b1", "Route": "PathRegexp(\"/.*\")"}'
+
         runcmd:
           - set -x
           - mkdir /tmp/etcd_install || rm -Rf /tmp/etcd_install/*
@@ -159,7 +203,6 @@ resources:
           - systemctl daemon-reload
           - systemctl enable etcd-proxy-static.service && systemctl start etcd-proxy-static.service
           - systemctl enable etcd-proxy-discovery.service && systemctl start etcd-proxy-discovery.service
-
           - mkdir /tmp/vulcand_install || rm -Rf /tmp/vulcand_install/*
           - [curl, -L, {get_param: insecure}, {get_param: vulcand_tar}, -o, /tmp/vulcand_install/vulcand.tar.gz]
           - cd -P /tmp/vulcand_install
@@ -167,8 +210,8 @@ resources:
           - mv /tmp/vulcand_install/vulcand /usr/bin/vulcand
           - mv /tmp/vulcand_install/vctl /usr/bin/vctl
           - mv /tmp/vulcand_install/vbundle /usr/bin/vbundle
+          - /etc/vulcand_rules
           - systemctl enable vulcand.service && systemctl start vulcand.service
-
 
 parameters:
   instance_basename:
@@ -199,3 +242,9 @@ parameters:
     type: string
   get_discovery:
     type: string
+  static_proxy_bind:
+    type: string
+    default: "http://127.0.0.1:8081"
+  discovery_proxy_bind:
+    type: string
+    default: "http://127.0.0.1:8080"

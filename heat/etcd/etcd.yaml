@@ -116,22 +116,17 @@ resources:
               "ress%": "vulcand_proxy"
               "rand%": { get_attr: [random, value] }
         rules:
-          - remote_ip_prefix: 0.0.0.0/0 # TODO
+          - remote_ip_prefix: {get_param: subnet_cidr}
             protocol: tcp
             port_range_min: 22
             port_range_max: 22
-            direction: ingress
-          - remote_ip_prefix: {get_param: subnet_cidr}
-            protocol: tcp
-            port_range_min: 8080
-            port_range_max: 8080
             direction: ingress
           - remote_ip_prefix: 0.0.0.0/0
             protocol: tcp
             port_range_min: 80
             port_range_max: 80
             direction: ingress
-          - remote_ip_prefix: {get_param: subnet_cidr}
+          - remote_ip_prefix: 0.0.0.0/0
             protocol: icmp
             direction: ingress
 
@@ -299,7 +294,7 @@ resources:
                __prefix__: {get_param: static_prefix}
 
   vulcand_proxy_group:
-    depends_on: [ etcd_static_group, discovery_token, vulcand_proxy_securitygroup, vulcand_proxy_anti ]
+    depends_on: [ etcd_discovery_group, vulcand_proxy_securitygroup, vulcand_proxy_anti ]
     type: OS::Heat::AutoScalingGroup
     properties:
       min_size: 1
@@ -327,7 +322,7 @@ resources:
           vulcand_tar: {get_param: vulcand_tar}
           get_discovery:
             str_replace:
-              template: http://__prefix__0:2379/v2/keys/discovery/__token__
+              template: http://127.0.0.1:8081/v2/keys/discovery/__token__
               params:
                 __prefix__: {get_param: static_prefix}
                 __token__: { get_attr: [discovery_token, value] }
