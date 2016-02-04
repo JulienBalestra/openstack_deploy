@@ -44,6 +44,48 @@ resources:
       user_data: { get_resource: etcd_userdata }
       scheduler_hints:
         group: { get_param: anti_affinity }
+      metadata:
+        static_endpoint: { get_param: static_endpoint }
+        static_proxy_bind: { get_param: static_proxy_bind }
+      metadata:
+        etcd_name:
+          str_replace:
+            template: bn%-rand%
+            params:
+              "bn%": { get_param: instance_basename }
+              "rand%": { get_attr: [random, value] }
+        # Proxy
+        etcd_initial_cluster: { get_param: etcd_initial_cluster }
+        etcd_static_proxy_listen_client_urls: { get_param: etcd_static_proxy_listen_client_urls }
+        etcd_proxy_data_dir: { get_param: etcd_proxy_data_dir }
+
+        # Discovery
+        etcd_data_dir: { get_param: etcd_data_dir }
+        etcd_discovery: { get_param: etcd_discovery }
+        etcd_listen_peer_urls:
+          str_replace:
+            template: http://$ip:$port
+            params:
+              $ip: { get_attr: [port, fixed_ips, 0, ip_address] }
+              $port: 2380
+        etcd_listen_client_urls:
+          str_replace:
+            template: http://$ip:$port
+            params:
+              $ip: { get_attr: [port, fixed_ips, 0, ip_address] }
+              $port: 2379
+        etcd_initial_advertise_peer_urls:
+          str_replace:
+            template: http://$ip:$port
+            params:
+              $ip: { get_attr: [port, fixed_ips, 0, ip_address] }
+              $port: 2380
+        etcd_advertise_client_urls:
+          str_replace:
+            template: http://$ip:$port
+            params:
+              $ip: { get_attr: [port, fixed_ips, 0, ip_address] }
+              $port: 2379
 
   etcd_userdata:
     depends_on: [ port ]
@@ -56,118 +98,97 @@ resources:
          - curl
          - jq
          - tar
+
         write_files:
           - path: /lib/systemd/system/etcd-proxy-static.service
             permissions: 0644
-            content:
-              str_replace:
-                params:
-                  __static_endpoint__: { get_param: static_endpoint }
-                  __instance_basename__:
-                    str_replace:
-                      template: bn%-rand%
-                      params:
-                        "bn%": { get_param: instance_basename }
-                        "rand%": { get_attr: [random, value] }
-                template: |
-                  [Unit]
-                  Description=etcd2 static proxy
-                  Conflicts=etcd-proxy-static.service
+            content: |
+              [Unit]
+              Description=etcd2 static proxy
+              Conflicts=etcd-proxy-static.service
 
-                  [Service]
-                  Type=idle
-                  ExecStart=/usr/bin/etcd \
-                    -name __instance_basename__ \
-                    -proxy on \
-                    -data-dir /var/lib/etcd2_proxy_static \
-                    -listen-client-urls http://127.0.0.1:8081 \
-                    -initial-cluster __static_endpoint__
-                  Restart=always
-                  RestartSec=10s
-                  LimitNOFILE=40000
-                  TimeoutStartSec=0
+              [Service]
+              Type=idle
+              Name=etcd-proxy-static
+              ExecStart=/bin/bash -x -c \
+              '/usr/bin/etcd \
+              -proxy on \
+              -name $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_name) \
+              -data-dir $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_proxy_data_dir) \
+              -listen-client-urls $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_static_proxy_listen_client_urls) \
+              -initial-cluster $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_initial_cluster)'
+              Restart=always
+              RestartSec=10s
+              LimitNOFILE=40000
+              TimeoutStartSec=0
 
-                  [Install]
-                  WantedBy=multi-user.target
+              [Install]
+              WantedBy=multi-user.target
+
           - path: /lib/systemd/system/etcd.service
             permissions: 0644
-            content:
-              str_replace:
-                params:
-                  __token__: { get_param: token }
-                  __ip_address__: { get_attr: [port, fixed_ips, 0, ip_address] }
-                  __instance_basename__:
-                    str_replace:
-                      template: bn%-rand%
-                      params:
-                        "bn%": { get_param: instance_basename }
-                        "rand%": { get_attr: [random, value] }
-                template: |
-                  [Unit]
-                  Description=etcd2
-                  Conflicts=etcd.service
-                  Requires=etcd-proxy-static.service
+            content: |
+              [Unit]
+              Description=etcd2
+              Conflicts=etcd.service
 
-                  [Service]
-                  Type=notify
-                  ExecStart=/usr/bin/etcd \
-                    -name __instance_basename__ \
-                    -data-dir /var/lib/etcd2 \
-                    -initial-advertise-peer-urls http://__ip_address__:2380 \
-                    -listen-peer-urls http://__ip_address__:2380 \
-                    -listen-client-urls http://__ip_address__:2379,http://127.0.0.1:2379 \
-                    -advertise-client-urls http://__ip_address__:2379 \
-                    -discovery http://localhost:8081/v2/keys/discovery/__token__
-                  Restart=always
-                  RestartSec=10s
-                  LimitNOFILE=40000
-                  TimeoutStartSec=0
+              [Service]
+              Type=notify
+              Name=etcd
+              ExecStart=/bin/bash -c \
+              '/usr/bin/etcd \
+              -name $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_name) \
+              -data-dir $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_data_dir) \
+              -listen-peer-urls $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_listen_peer_urls) \
+              -listen-client-urls $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_listen_client_urls) \
+              -initial-advertise-peer-urls $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_initial_advertise_peer_urls) \
+              -advertise-client-urls $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_advertise_client_urls) \
+              -discovery $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_discovery)'
 
-                  [Install]
-                  WantedBy=multi-user.target
+              Restart=always
+              RestartSec=10s
+              LimitNOFILE=40000
+              TimeoutStartSec=0
+
+              [Install]
+              WantedBy=multi-user.target
+
           - path: /etc/etcd_waiting
             permissions: 0544
-            content:
-              str_replace:
-                params:
-                  __default_target__: { get_param: static_proxy_bind }
-                template: |
-                  #! /bin/bash
+            content: |
+              #! /bin/bash
+              TARGET=$1
+              DEFAULT_TARGET=$(curl 169.254.169.254/openstack/latest/meta_data.json | jq -r .meta.etcd_static_proxy_listen_client_urls)
+              SLEEP=10
 
-                  TARGET=$1
-                  DEFAULT_TARGET=__default_target__
-                  UPSERT=?prevExist=false
-                  SLEEP=10
+              function check_param
+              {
+                  if [ $# -ne 1 ]
+                  then
+                      echo "1 parameter expected TARGET: [$#] given"
+                      TARGET=${DEFAULT_TARGET}
+                  fi
+              }
 
-                  function check_param
-                  {
-                      if [ $# -ne 1 ]
-                      then
-                          echo "1 parameter expected TARGET: [$#] given"
-                          TARGET=${DEFAULT_TARGET}
-                      fi
-                  }
-
-                  function waiting_endpoint
-                  {
-                      for i in {0..20}
-                      do
-                          curl ${TARGET}
-                          if [ $? -eq 0 ]
-                              then
-                                echo "loop ${i} -> ${TARGET} READY ret: $?"
-                                return 0
-                              fi
-                          echo "loop ${i} -> ${TARGET} not ready ret: $?"
-                          sleep ${SLEEP}
-                      done
-                      exit 2
-                  }
-
-                  # MAIN
-                  set -x
-                  check_param
-                  waiting_endpoint
+              function waiting_endpoint
+              {
+                  for i in {0..20}
+                  do
+                      curl ${TARGET}
+                      if [ $? -eq 0 ]
+                          then
+                            echo "loop ${i} -> ${TARGET} READY ret: $?"
+                            return 0
+                          fi
+                      echo "loop ${i} -> ${TARGET} not ready ret: $?"
+                      sleep ${SLEEP}
+                  done
+                  exit 2
+              }
+              # MAIN
+              set -x
+              check_param
+              waiting_endpoint
 
         runcmd:
           - set -x
@@ -179,16 +200,19 @@ resources:
           - tar -xzvf /tmp/etcd_install/etcd.tar.gz --strip-components=1
           - mv /tmp/etcd_install/etcd /usr/bin/etcd
           - mv /tmp/etcd_install/etcdctl /usr/bin/etcdctl
-          - mkdir -p /var/lib/etcd2 && mkdir -p /var/lib/etcd2_proxy_static
+          - [mkdir, -p, {get_param: etcd_data_dir}]
+          - [mkdir, -p, {get_param: etcd_proxy_data_dir}]
 
           # Capable because of write_files section
           - systemctl daemon-reload
           - systemctl enable etcd-proxy-static.service
-          - systemctl start etcd-proxy-static.service && systemctl status etcd-proxy-static.service
+          - systemctl start etcd-proxy-static.service
+          - systemctl status etcd-proxy-static.service
           - systemctl enable etcd.service
           - [/etc/etcd_waiting]
           - [ curl, -XPUT, {get_param: create_discovery}, -d, {get_param: value_etcd_size} ]
-          - systemctl start etcd.service && systemctl status etcd.service
+          - systemctl start etcd.service
+          - systemctl status etcd.service
 
 
 parameters:
@@ -228,12 +252,19 @@ parameters:
   anti_affinity:
     type: string
 
-  static_endpoint:
+  etcd_initial_cluster:
     type: string
 
-  token:
+  etcd_static_proxy_listen_client_urls:
     type: string
 
-  static_proxy_bind:
+  etcd_data_dir:
     type: string
-    default: "http://127.0.0.1:8081"
+    default: "/var/lib/etcd2"
+
+  etcd_proxy_data_dir:
+    type: string
+    default: "/var/lib/etcd2_proxy"
+
+  etcd_discovery:
+    type: string

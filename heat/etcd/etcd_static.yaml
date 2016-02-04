@@ -103,7 +103,8 @@ resources:
 
               [Service]
               Type=notify
-              ExecStart=/bin/bash -c \
+              Name=etcd
+              ExecStart=/bin/bash -x -c \
               '/usr/bin/etcd \
               -name $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_name) \
               -data-dir $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_data_dir) \
