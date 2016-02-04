@@ -45,9 +45,6 @@ resources:
       scheduler_hints:
         group: { get_param: anti_affinity }
       metadata:
-        static_endpoint: { get_param: static_endpoint }
-        static_proxy_bind: { get_param: static_proxy_bind }
-      metadata:
         etcd_name:
           str_replace:
             template: bn%-rand%
