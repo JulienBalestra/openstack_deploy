@@ -46,6 +46,40 @@ resources:
       scheduler_hints:
         group: { get_param: anti_affinity }
 
+      metadata:
+        etcd_name:
+          str_replace:
+            template: static__index__
+            params:
+              __index__: { get_param: index }
+        etcd_data_dir: { get_param: etcd_data_dir }
+        etcd_listen_peer_urls:
+          str_replace:
+            template: http://$ip:$port
+            params:
+              $ip: { get_attr: [port, fixed_ips, 0, ip_address] }
+              $port: 2380
+        etcd_listen_client_urls:
+          str_replace:
+            template: http://$ip:$port
+            params:
+              $ip: { get_attr: [port, fixed_ips, 0, ip_address] }
+              $port: 2379
+        etcd_initial_advertise_peer_urls:
+          str_replace:
+            template: http://$ip:$port
+            params:
+              $ip: { get_attr: [port, fixed_ips, 0, ip_address] }
+              $port: 2380
+        etcd_advertise_client_urls:
+          str_replace:
+            template: http://$ip:$port
+            params:
+              $ip: { get_attr: [port, fixed_ips, 0, ip_address] }
+              $port: 2379
+        etcd_initial_cluster_token: { get_param: etcd_initial_cluster_token }
+        etcd_initial_cluster: { get_param: etcd_initial_cluster }
+        etcd_initial_cluster_state: { get_param: etcd_initial_cluster_state }
 
   etcd_userdata:
     depends_on: [ port ]
@@ -62,36 +96,31 @@ resources:
         write_files:
           - path: /lib/systemd/system/etcd.service
             permissions: 0644
-            content:
-              str_replace:
-                params:
-                  __index__: { get_param: index }
-                  __static_endpoint__: { get_param: static_endpoint }
-                  __ip_address__: { get_attr: [port, fixed_ips, 0, ip_address] }
-                template: |
-                  [Unit]
-                  Description=etcd2
-                  Conflicts=etcd.service
+            content: |
+              [Unit]
+              Description=etcd2
+              Conflicts=etcd.service
 
-                  [Service]
-                  Type=notify
-                  ExecStart=/usr/bin/etcd \
-                    -name static__index__ \
-                    -data-dir /var/lib/etcd2 \
-                    -initial-advertise-peer-urls http://__ip_address__:2380 \
-                    -listen-peer-urls http://__ip_address__:2380 \
-                    -listen-client-urls http://__ip_address__:2379,http://127.0.0.1:2379 \
-                    -advertise-client-urls http://__ip_address__:2379 \
-                    -initial-cluster-token __token__ \
-                    -initial-cluster __static_endpoint__ \
-                    -initial-cluster-state new
-                  Restart=always
-                  RestartSec=10s
-                  LimitNOFILE=40000
-                  TimeoutStartSec=0
+              [Service]
+              Type=notify
+              ExecStart=/bin/bash -c \
+              '/usr/bin/etcd \
+              -name $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_name) \
+              -data-dir $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_data_dir) \
+              -listen-peer-urls $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_listen_peer_urls) \
+              -listen-client-urls $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_listen_client_urls) \
+              -initial-advertise-peer-urls $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_initial_advertise_peer_urls) \
+              -advertise-client-urls $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_advertise_client_urls) \
+              -initial-cluster-token $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_initial_cluster_token) \
+              -initial-cluster $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_initial_cluster) \
+              -initial-cluster-state $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_initial_cluster_state)'
+              Restart=always
+              RestartSec=10s
+              LimitNOFILE=40000
+              TimeoutStartSec=0
 
-                  [Install]
-                  WantedBy=multi-user.target
+              [Install]
+              WantedBy=multi-user.target
 
         runcmd:
           - set -x
@@ -101,7 +130,7 @@ resources:
           - tar -xzvf /tmp/etcd_install/etcd.tar.gz --strip-components=1
           - mv /tmp/etcd_install/etcd /usr/bin/etcd
           - mv /tmp/etcd_install/etcdctl /usr/bin/etcdctl
-          - mkdir -p /var/lib/etcd2
+          - [mkdir, -p, {get_param: etcd_data_dir}]
           - systemctl daemon-reload
           - systemctl enable etcd.service
           - systemctl start etcd.service && systemctl status etcd.service
@@ -110,45 +139,40 @@ resources:
 parameters:
   instance_basename:
     type: string
-
   key_name:
     type: string
-
   security_group:
     type: string
-
   network:
     type: string
-
   subnet:
     type: string
-
   image:
     type: string
-
   flavor:
     type: string
-
   insecure:
     type: string
-
   etcd_tar:
     type: string
-
   prefix:
     type: string
-
-  token:
-    type: string
-
   anti_affinity:
     type: string
-
   index:
     type: number
 
-  static_endpoint:
+  etcd_data_dir:
     type: string
+    default: "/var/lib/etcd2"
+  etcd_initial_cluster_token:
+    type: string
+  etcd_initial_cluster:
+    type: string
+  etcd_initial_cluster_state:
+    type: string
+    default: "new"
+
 
 outputs:
   ip:

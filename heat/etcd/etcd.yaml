@@ -333,15 +333,15 @@ resources:
           prefix: {get_param: static_prefix}
           insecure: {get_param: insecure}
           etcd_tar: {get_param: etcd_tar}
-          token: { get_attr: [static_token, value] }
+          etcd_initial_cluster_token: { get_attr: [static_token, value] }
           instance_basename:
             str_replace:
               template: ctx%rand%-ress%-%index%
               params:
-                "ctx%": {get_param: context}
-                "ress%": "etcd_static"
-                "rand%": { get_attr: [random, value] }
-          static_endpoint:
+                ctx%: {get_param: context}
+                ress%: "etcd_static"
+                rand%: { get_attr: [random, value] }
+          etcd_initial_cluster:
             str_replace:
              template: __stn__0=http://__prefix__0:2380,__stn__1=http://__prefix__1:2380,__stn__2=http://__prefix__2:2380
              params:
@@ -584,7 +584,6 @@ parameters:
     default: 3
     constraints:
     - type: Choice
-      description: must be a valid instance type
       values:
       - 3
       - 5
