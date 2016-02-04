@@ -62,6 +62,7 @@ resources:
          - curl
          - jq
          - tar
+
         write_files:
           - path: /lib/systemd/system/etcd-proxy-discovery.service
             permissions: 0644
@@ -97,6 +98,7 @@ resources:
 
                   [Install]
                   WantedBy=multi-user.target
+
           - path: /lib/systemd/system/etcd-proxy-static.service
             permissions: 0644
             content:
@@ -130,6 +132,7 @@ resources:
 
                   [Install]
                   WantedBy=multi-user.target
+
           - path: /lib/systemd/system/vulcand.service
             permissions: 0644
             content:
@@ -154,6 +157,51 @@ resources:
 
                   [Install]
                   WantedBy=multi-user.target
+
+          - path: /etc/etcd_waiting
+            permissions: 0544
+            content:
+              str_replace:
+                params:
+                  __default_target__: { get_param: static_proxy_bind }
+                template: |
+                  #! /bin/bash
+
+                  TARGET=$1
+                  DEFAULT_TARGET=__default_target__
+                  UPSERT=?prevExist=false
+                  SLEEP=10
+
+                  function check_param
+                  {
+                      if [ $# -ne 1 ]
+                      then
+                          echo "1 parameter expected TARGET: [$#] given"
+                          TARGET=${DEFAULT_TARGET}
+                      fi
+                  }
+
+                  function waiting_endpoint
+                  {
+                      for i in {0..20}
+                      do
+                          curl ${TARGET}
+                          if [ $? -eq 0 ]
+                              then
+                                echo "loop ${i} -> ${TARGET} READY ret: $?"
+                                return 0
+                              fi
+                          echo "loop ${i} -> ${TARGET} not ready ret: $?"
+                          sleep ${SLEEP}
+                      done
+                      exit 2
+                  }
+
+                  # MAIN
+                  set -x
+                  check_param
+                  waiting_endpoint
+
           - path: /etc/vulcand_rules
             permissions: 0544
             content:
@@ -164,22 +212,9 @@ resources:
                 template: |
                   #! /bin/bash
 
-
                   STATIC_PROXY=__static_proxy_bind__
                   DISCOVERY_PROXY=__discovery_proxy_bind__
                   UPSERT=?prevExist=false
-
-                  for i in {0..20}
-                  do
-                    curl ${STATIC_PROXY}
-                    if [ $? -eq 0 ]
-                    then
-                      echo "loop ${i} -> ${STATIC_PROXY} READY ret: $?"
-                      break
-                    fi
-                    echo "loop ${i} -> ${STATIC_PROXY} not ready ret: $?"
-                    sleep 10
-                  done
 
                   set -x
                   curl -XPUT ${STATIC_PROXY}/v2/keys/vulcand/backends/b1/backend${UPSERT} \
@@ -193,6 +228,8 @@ resources:
 
         runcmd:
           - set -x
+
+          # etcd install from release or object store stagging
           - mkdir /tmp/etcd_install || rm -Rf /tmp/etcd_install/*
           - [curl, -L, {get_param: insecure}, {get_param: etcd_tar}, -o, /tmp/etcd_install/etcd.tar.gz]
           - cd -P /tmp/etcd_install
@@ -200,51 +237,72 @@ resources:
           - mv /tmp/etcd_install/etcd /usr/bin/etcd
           - mv /tmp/etcd_install/etcdctl /usr/bin/etcdctl
           - mkdir -p /var/lib/etcd2_proxy_static && mkdir -p /var/lib/etcd2_proxy_discovery
+
+          # start proxies
           - systemctl daemon-reload
           - systemctl enable etcd-proxy-static.service && systemctl start etcd-proxy-static.service
           - systemctl enable etcd-proxy-discovery.service && systemctl start etcd-proxy-discovery.service
           - mkdir /tmp/vulcand_install || rm -Rf /tmp/vulcand_install/*
+
+          # vulcand install from release or object store stagging
           - [curl, -L, {get_param: insecure}, {get_param: vulcand_tar}, -o, /tmp/vulcand_install/vulcand.tar.gz]
           - cd -P /tmp/vulcand_install
           - tar -xzvf /tmp/vulcand_install/vulcand.tar.gz --strip-components=1
           - mv /tmp/vulcand_install/vulcand /usr/bin/vulcand
           - mv /tmp/vulcand_install/vctl /usr/bin/vctl
           - mv /tmp/vulcand_install/vbundle /usr/bin/vbundle
+          - /etc/etcd_waiting
           - /etc/vulcand_rules
           - systemctl enable vulcand.service && systemctl start vulcand.service
+
 
 parameters:
   instance_basename:
     type: string
+
   key_name:
     type: string
+
   security_group:
     type: string
+
   network:
     type: string
+
   subnet:
     type: string
+
   image:
     type: string
+
   flavor:
     type: string
+
   insecure:
     type: string
+
   etcd_tar:
     type: string
+
   anti_affinity:
     type: string
+
   floatingip_network_name:
     type: string
+
   vulcand_tar:
     type: string
+
   static_endpoint:
     type: string
+
   get_discovery:
     type: string
+
   static_proxy_bind:
     type: string
     default: "http://127.0.0.1:8081"
+
   discovery_proxy_bind:
     type: string
     default: "http://127.0.0.1:8080"

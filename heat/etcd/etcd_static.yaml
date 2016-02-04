@@ -58,6 +58,7 @@ resources:
          - curl
          - jq
          - tar
+
         write_files:
           - path: /lib/systemd/system/etcd.service
             permissions: 0644
@@ -91,6 +92,7 @@ resources:
 
                   [Install]
                   WantedBy=multi-user.target
+
         runcmd:
           - set -x
           - mkdir /tmp/etcd_install || rm -Rf /tmp/etcd_install/*
@@ -102,36 +104,49 @@ resources:
           - mkdir -p /var/lib/etcd2
           - systemctl daemon-reload
           - systemctl enable etcd.service
-          - systemctl start etcd.service
-          - systemctl status etcd.service
+          - systemctl start etcd.service && systemctl status etcd.service
+
 
 parameters:
   instance_basename:
     type: string
+
   key_name:
     type: string
+
   security_group:
     type: string
+
   network:
     type: string
+
   subnet:
     type: string
+
   image:
     type: string
+
   flavor:
     type: string
+
   insecure:
     type: string
+
   etcd_tar:
     type: string
+
   prefix:
     type: string
+
   token:
     type: string
+
   anti_affinity:
     type: string
+
   index:
     type: number
+
   static_endpoint:
     type: string
 

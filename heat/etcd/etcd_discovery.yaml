@@ -1,7 +1,7 @@
 heat_template_version: 2014-10-16
 
 description: >
-  Instance with UserData
+  Discovery nested stack to build with AutoScalingGroup or ResourceGroup
 
 resources:
   random:
@@ -125,8 +125,54 @@ resources:
 
                   [Install]
                   WantedBy=multi-user.target
+          - path: /etc/etcd_waiting
+            permissions: 0544
+            content:
+              str_replace:
+                params:
+                  __default_target__: { get_param: static_proxy_bind }
+                template: |
+                  #! /bin/bash
+
+                  TARGET=$1
+                  DEFAULT_TARGET=__default_target__
+                  UPSERT=?prevExist=false
+                  SLEEP=10
+
+                  function check_param
+                  {
+                      if [ $# -ne 1 ]
+                      then
+                          echo "1 parameter expected TARGET: [$#] given"
+                          TARGET=${DEFAULT_TARGET}
+                      fi
+                  }
+
+                  function waiting_endpoint
+                  {
+                      for i in {0..20}
+                      do
+                          curl ${TARGET}
+                          if [ $? -eq 0 ]
+                              then
+                                echo "loop ${i} -> ${TARGET} READY ret: $?"
+                                return 0
+                              fi
+                          echo "loop ${i} -> ${TARGET} not ready ret: $?"
+                          sleep ${SLEEP}
+                      done
+                      exit 2
+                  }
+
+                  # MAIN
+                  set -x
+                  check_param
+                  waiting_endpoint
+
         runcmd:
           - set -x
+
+          # Install from release or object store stagging
           - mkdir /tmp/etcd_install || rm -Rf /tmp/etcd_install/*
           - [curl, -L, {get_param: insecure}, {get_param: etcd_tar}, -o, /tmp/etcd_install/etcd.tar.gz]
           - cd -P /tmp/etcd_install
@@ -134,41 +180,60 @@ resources:
           - mv /tmp/etcd_install/etcd /usr/bin/etcd
           - mv /tmp/etcd_install/etcdctl /usr/bin/etcdctl
           - mkdir -p /var/lib/etcd2 && mkdir -p /var/lib/etcd2_proxy_static
+
+          # Capable because of write_files section
           - systemctl daemon-reload
           - systemctl enable etcd-proxy-static.service
           - systemctl start etcd-proxy-static.service && systemctl status etcd-proxy-static.service
           - systemctl enable etcd.service
-          - until curl localhost:8081 ; do sleep 10 ; done
-          - [ curl, -s, -XPUT, {get_param: create_discovery}, -d, {get_param: value_etcd_size} ]
+          - [/etc/etcd_waiting]
+          - [ curl, -XPUT, {get_param: create_discovery}, -d, {get_param: value_etcd_size} ]
           - systemctl start etcd.service && systemctl status etcd.service
 
 
 parameters:
   instance_basename:
     type: string
+
   key_name:
     type: string
+
   security_group:
     type: string
+
   network:
     type: string
+
   subnet:
     type: string
+
   image:
     type: string
+
   flavor:
     type: string
+
   insecure:
     type: string
+
   etcd_tar:
     type: string
+
   create_discovery:
     type: string
+
   value_etcd_size:
     type: string
+
   anti_affinity:
     type: string
+
   static_endpoint:
     type: string
+
   token:
     type: string
+
+  static_proxy_bind:
+    type: string
+    default: "http://127.0.0.1:8081"
