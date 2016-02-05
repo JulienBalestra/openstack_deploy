@@ -354,7 +354,7 @@ resources:
     properties:
       min_size: 3
       desired_capacity: { get_param: etcd_discovery_size }
-      max_size: 5
+      max_size: 9
       rolling_updates: {"max_batch_size": 1, "min_in_service": 1, "pause_time": 60}
       resource:
         type: "EtcdDiscovery"
