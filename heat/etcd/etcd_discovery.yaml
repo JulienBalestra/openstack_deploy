@@ -106,7 +106,6 @@ resources:
 
               [Service]
               Type=idle
-              Name=etcd-proxy-static
               ExecStart=/bin/bash -x -c \
               '/usr/bin/etcd \
               -proxy on \
@@ -131,7 +130,6 @@ resources:
 
               [Service]
               Type=notify
-              Name=etcd
               ExecStart=/bin/bash -c \
               '/usr/bin/etcd \
               -name $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_name) \

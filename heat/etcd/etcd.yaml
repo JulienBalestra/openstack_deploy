@@ -427,21 +427,24 @@ resources:
                "ress%": "vulcand_proxy"
           insecure: {get_param: insecure}
           vulcand_tar: {get_param: vulcand_tar}
-          get_discovery:
-            str_replace:
-              template: http://127.0.0.1:8081/v2/keys/discovery/__token__
-              params:
-                __prefix__: {get_param: static_prefix}
-                __token__: { get_attr: [discovery_token, value] }
           etcd_tar: {get_param: etcd_tar}
           floatingip_network_name: { get_param: floatingip_network_name }
-          static_endpoint:
+
+          etcd_discovery:
+            str_replace:
+              template: __etcd_proxy_listen_client_urls__/v2/keys/discovery/_etcd/__token__
+              params:
+                __etcd_proxy_listen_client_urls__: { get_param: etcd_static_proxy_listen_client_urls }
+                __token__: { get_attr: [discovery_token, value] }
+          etcd_initial_cluster:
             str_replace:
              template: __stn__0=http://__prefix__0:2380,__stn__1=http://__prefix__1:2380,__stn__2=http://__prefix__2:2380
              params:
                __stn__: {get_param: static_name}
                __prefix__: {get_param: static_prefix}
 
+          etcd_discovery_proxy_listen_client_urls: {get_param: etcd_discovery_proxy_listen_client_urls}
+          etcd_static_proxy_listen_client_urls: {get_param: etcd_static_proxy_listen_client_urls}
 
   bastion_userdata:
     type: OS::Heat::CloudConfig
@@ -638,7 +641,7 @@ parameters:
     type: string
     default: "http://127.0.0.1:8081"
 
-  etcd_dynamic_proxy_listen_client_urls:
+  etcd_discovery_proxy_listen_client_urls:
     type: string
     default: "http://127.0.0.1:8080"
 
