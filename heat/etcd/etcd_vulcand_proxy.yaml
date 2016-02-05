@@ -68,6 +68,14 @@ resources:
         etcd_discovery_proxy_listen_client_urls: {get_param: etcd_discovery_proxy_listen_client_urls}
         etcd_discovery_proxy_data_dir: { get_param: etcd_static_proxy_data_dir }
 
+        vulcand_listen_client_port: {get_param: vulcand_listen_client_port}
+        etcd_url_vulcand_listen_client_port:
+          str_replace:
+            template: etcd_static%vulcand_key%
+            params:
+              etcd_static%: { get_param: etcd_static_proxy_listen_client_urls }
+              vulcand_key%: { get_param: vulcand_url_listen_client_port }
+
 
 
   etcd_userdata:
@@ -143,7 +151,9 @@ resources:
               ExecStart=/bin/bash -c -x \
               '/usr/bin/vulcand \
                 -etcd=$(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_static_proxy_listen_client_urls) \
-                -port=80'
+                -port=$(/usr/bin/curl \
+                  $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_url_vulcand_listen_client_port) \
+                    | /usr/bin/jq -r .node.value)'
               Restart=always
               RestartSec=10s
               LimitNOFILE=40000
@@ -199,6 +209,8 @@ resources:
 
               STATIC_PROXY=$(curl 169.254.169.254/openstack/latest/meta_data.json | jq -r .meta.etcd_static_proxy_listen_client_urls)
               DISCOVERY_PROXY=$(curl 169.254.169.254/openstack/latest/meta_data.json | jq -r .meta.etcd_discovery_proxy_listen_client_urls)
+              ETCD_VULCAND_URL_PORT=$(curl 169.254.169.254/openstack/latest/meta_data.json | jq -r .meta.etcd_url_vulcand_listen_client_port)
+              VULCAND_PORT=$(curl 169.254.169.254/openstack/latest/meta_data.json | jq -r .meta.vulcand_listen_client_port)
               UPSERT=?prevExist=false
 
               set -x
@@ -210,6 +222,9 @@ resources:
 
               curl -XPUT ${STATIC_PROXY}/v2/keys/vulcand/frontends/f1/frontend${UPSERT} \
                 -d value='{"Type": "http", "BackendId": "b1", "Route": "PathRegexp(\"/.*\")"}'
+
+              curl -XPUT ${ETCD_VULCAND_URL_PORT}${UPSERT} \
+                -d value=${VULCAND_PORT}
 
         runcmd:
           - set -x
@@ -301,3 +316,11 @@ parameters:
   etcd_discovery_proxy_data_dir:
     type: string
     default: "/var/lib/etcd2_proxy_discovery"
+
+  vulcand_listen_client_port:
+    type: number
+    default: 80
+
+  vulcand_url_listen_client_port:
+    type: string
+    default: "/v2/keys/vulcand/port"

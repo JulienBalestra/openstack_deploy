@@ -458,6 +458,76 @@ resources:
         final_message: "The system is finally up, after ${UPTIME} seconds"
 
 
+
+  etcd_scale_up:
+    depends_on: [ etcd_discovery_group ]
+    type: OS::Heat::ScalingPolicy
+    properties:
+      adjustment_type: change_in_capacity
+      auto_scaling_group_id: {get_resource: etcd_discovery_group}
+      cooldown: 30
+      scaling_adjustment: 1
+
+  etcd_scale_down:
+    depends_on: [ etcd_discovery_group ]
+    type: OS::Heat::ScalingPolicy
+    properties:
+      adjustment_type: change_in_capacity
+      auto_scaling_group_id: {get_resource: etcd_discovery_group}
+      cooldown: 30
+      scaling_adjustment: -1
+
+
+  vulcand_scale_up:
+    depends_on: [ vulcand_proxy_group ]
+    type: OS::Heat::ScalingPolicy
+    properties:
+      adjustment_type: change_in_capacity
+      auto_scaling_group_id: {get_resource: vulcand_proxy_group}
+      cooldown: 30
+      scaling_adjustment: 1
+
+  vulcand_scale_down:
+    depends_on: [ vulcand_proxy_group ]
+    type: OS::Heat::ScalingPolicy
+    properties:
+      adjustment_type: change_in_capacity
+      auto_scaling_group_id: {get_resource: vulcand_proxy_group}
+      cooldown: 30
+      scaling_adjustment: -1
+
+
+outputs:
+
+  base_name:
+    description: Random value used to tag stack resources
+    value:
+      - { get_attr: [random, value] }
+  static_token:
+    description: Random value used to generate static token
+    value:
+      - { get_attr: [static_token, value] }
+  discovery_token:
+    description: Random value used to generate discovery token
+    value:
+      - { get_attr: [discovery_token, value] }
+
+  vulcand_scale_up:
+    value:
+      - {get_attr: [vulcand_scale_up, alarm_url]}
+  vulcand_scale_down:
+    value:
+      - {get_attr: [vulcand_scale_down, alarm_url]}
+
+  etcd_scale_up:
+    value:
+      - {get_attr: [etcd_scale_up, alarm_url]}
+  etcd_scale_down:
+    value:
+      - {get_attr: [etcd_scale_down, alarm_url]}
+
+
+
 parameters:
 
   context:
@@ -644,10 +714,3 @@ parameters:
   etcd_discovery_proxy_listen_client_urls:
     type: string
     default: "http://127.0.0.1:8080"
-
-
-outputs:
-  base_name:
-    description: Random value used to tag stack resources
-    value:
-      - { get_attr: [random, value] }
