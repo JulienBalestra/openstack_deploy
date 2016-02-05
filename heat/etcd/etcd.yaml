@@ -701,6 +701,7 @@ parameters:
 
   vulcand_tar:
     type: string
+    description: "https://github.com/vulcand/vulcand/releases/version/arch.tar.gz"
 
   insecure:
     type: string
