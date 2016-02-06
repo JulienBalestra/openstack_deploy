@@ -16,6 +16,7 @@ function go_to_dirname
 function run_tests
 {
     export LC_ALL=C
+    set -x
     python -m unittest discover $(pwd)/scripts/haproxy
     if [ $? -ne 0 ]
     then
