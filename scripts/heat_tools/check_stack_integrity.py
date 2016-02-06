@@ -38,7 +38,7 @@ class CheckStackIntegrity(object):
 	def assert_params_equality(self):
 		self._set_parameters_section()
 		self._set_used_type('get_param', self.resources)
-		assert p.declared_params == p.used_params
+		assert self.declared_params == self.used_params
 
 
 if __name__ == "__main__":
