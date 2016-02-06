@@ -526,6 +526,10 @@ outputs:
     value:
       - {get_attr: [etcd_scale_down, alarm_url]}
 
+  not_here:
+    value:
+      - {get_attr: [not_here, alarm_url]}
+
 
 
 parameters:
