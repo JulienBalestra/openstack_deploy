@@ -5,7 +5,11 @@
 ## Heat Stacks
 
 * Computor (application)
+* Etcd
+
+* OpenStack samples
 
 ## Utilities
 
 * HAProxy
+* Stack Integrity (heat template-validate is not enough)
