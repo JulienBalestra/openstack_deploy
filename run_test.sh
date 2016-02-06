@@ -16,10 +16,15 @@ function go_to_dirname
 function run_tests
 {
     export LC_ALL=C
-    python -m unittest discover $(pwd)/scripts
+    python -m unittest discover $(pwd)/scripts/haproxy
     if [ $? -ne 0 ]
     then
         exit 2
+    fi
+    python -m unittest discover $(pwd)/scripts/heat_tools
+    if [ $? -ne 0 ]
+    then
+        exit 3
     fi
 }
 
