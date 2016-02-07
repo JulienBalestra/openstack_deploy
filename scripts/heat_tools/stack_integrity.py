@@ -16,6 +16,9 @@ class StackIntegrity(object):
 		self.used_outputs = set()
 		self.declared_outputs = set()
 
+		self.used_resources = set()
+		self.declared_resources = set()
+
 	@staticmethod
 	def _get_content(file_path):
 		with open(file_path, 'r') as fd:
@@ -46,5 +49,10 @@ class StackIntegrity(object):
 
 	def capable_outputs(self):
 		self._set_used_type('get_attr', self.outputs, self.declared_outputs)
+		resources_names = set(self.resources.keys())
+		assert len(self.declared_outputs - resources_names) == 0
+
+	def capable_resources(self):
+		self._set_used_type('get_resource', self.resources, self.declared_resources)
 		resources_names = set(self.resources.keys())
 		assert len(self.declared_outputs - resources_names) == 0

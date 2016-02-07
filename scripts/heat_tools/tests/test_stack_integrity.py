@@ -19,6 +19,9 @@ class TestCheckStackIntegrityValid(unittest.TestCase):
 	def test_outputs(self):
 		self.csi.capable_outputs()
 
+	def test_resources(self):
+		self.csi.capable_resources()
+
 
 class TestCheckStackIntegrityInvalid(unittest.TestCase):
 	file_path = "test_resources/etcd_invalid.yaml"
@@ -36,3 +39,7 @@ class TestCheckStackIntegrityInvalid(unittest.TestCase):
 	def test_outputs(self):
 		with self.assertRaises(AssertionError):
 			self.csi.capable_outputs()
+
+	def test_resources(self):
+		with self.assertRaises(AssertionError):
+			self.csi.capable_resources()
