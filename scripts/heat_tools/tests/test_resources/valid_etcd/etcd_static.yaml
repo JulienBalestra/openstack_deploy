@@ -1,0 +1,183 @@
+heat_template_version: 2014-10-16
+
+description: >
+  Instance with UserData
+
+resources:
+  random:
+    type: OS::Heat::RandomString
+    properties:
+      length: 10
+      sequence: lettersdigits
+
+  port:
+    depends_on: [ random ]
+    type: OS::Neutron::Port
+    properties:
+      name:
+        str_replace:
+          template: bn%-rand%
+          params:
+            "bn%": { get_param: instance_basename }
+            "rand%": { get_attr: [random, value] }
+      network_id: { get_param: network }
+      fixed_ips:
+        - subnet_id: { get_param: subnet }
+          ip_address:
+            str_replace:
+              template: prefix%index%
+              params:
+                "prefix%": { get_param: prefix }
+                "index%":  { get_param: index }
+      security_groups: [ { get_param: security_group } ]
+
+  instance:
+    depends_on: [ port, etcd_userdata ]
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: instance_basename }
+      key_name: { get_param: key_name }
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      networks:
+        - port: { get_resource: port }
+      user_data_format: RAW
+      user_data: { get_resource: etcd_userdata }
+      scheduler_hints:
+        group: { get_param: anti_affinity }
+
+      metadata:
+        etcd_name:
+          str_replace:
+            template: static__index__
+            params:
+              __index__: { get_param: index }
+        etcd_data_dir: { get_param: etcd_data_dir }
+        etcd_listen_peer_urls:
+          str_replace:
+            template: http://$ip:$port
+            params:
+              $ip: { get_attr: [port, fixed_ips, 0, ip_address] }
+              $port: 2380
+        etcd_listen_client_urls:
+          str_replace:
+            template: http://$ip:$port
+            params:
+              $ip: { get_attr: [port, fixed_ips, 0, ip_address] }
+              $port: 2379
+        etcd_initial_advertise_peer_urls:
+          str_replace:
+            template: http://$ip:$port
+            params:
+              $ip: { get_attr: [port, fixed_ips, 0, ip_address] }
+              $port: 2380
+        etcd_advertise_client_urls:
+          str_replace:
+            template: http://$ip:$port
+            params:
+              $ip: { get_attr: [port, fixed_ips, 0, ip_address] }
+              $port: 2379
+        etcd_initial_cluster_token: { get_param: etcd_initial_cluster_token }
+        etcd_initial_cluster: { get_param: etcd_initial_cluster }
+        etcd_initial_cluster_state: { get_param: etcd_initial_cluster_state }
+
+  etcd_userdata:
+    depends_on: [ port ]
+    type: OS::Heat::CloudConfig
+    properties:
+      cloud_config:
+        package_update: true
+        package_upgrade: false
+        packages:
+         - curl
+         - jq
+         - tar
+
+        write_files:
+          - path: /lib/systemd/system/etcd.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=etcd2
+              Conflicts=etcd.service
+
+              [Service]
+              Type=notify
+              ExecStart=/bin/bash -x -c \
+              '/usr/bin/etcd \
+              -name $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_name) \
+              -data-dir $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_data_dir) \
+              -listen-peer-urls $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_listen_peer_urls) \
+              -listen-client-urls $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_listen_client_urls) \
+              -initial-advertise-peer-urls $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_initial_advertise_peer_urls) \
+              -advertise-client-urls $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_advertise_client_urls) \
+              -initial-cluster-token $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_initial_cluster_token) \
+              -initial-cluster $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_initial_cluster) \
+              -initial-cluster-state $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_initial_cluster_state)'
+              Restart=always
+              RestartSec=10s
+              LimitNOFILE=40000
+              TimeoutStartSec=0
+
+              [Install]
+              WantedBy=multi-user.target
+
+        runcmd:
+          - set -x
+          - mkdir /tmp/etcd_install || rm -Rf /tmp/etcd_install/*
+          - [curl, -L, {get_param: insecure}, {get_param: etcd_tar}, -o, /tmp/etcd_install/etcd.tar.gz]
+          - cd -P /tmp/etcd_install
+          - tar -xzvf /tmp/etcd_install/etcd.tar.gz --strip-components=1
+          - mv /tmp/etcd_install/etcd /usr/bin/etcd
+          - mv /tmp/etcd_install/etcdctl /usr/bin/etcdctl
+          - [mkdir, -p, {get_param: etcd_data_dir}]
+          - systemctl daemon-reload
+          - systemctl enable etcd.service
+          - systemctl start etcd.service && systemctl status etcd.service
+
+
+parameters:
+  instance_basename:
+    type: string
+  key_name:
+    type: string
+  security_group:
+    type: string
+  network:
+    type: string
+  subnet:
+    type: string
+  image:
+    type: string
+  flavor:
+    type: string
+  insecure:
+    type: string
+  etcd_tar:
+    type: string
+  prefix:
+    type: string
+  anti_affinity:
+    type: string
+  index:
+    type: number
+
+  etcd_data_dir:
+    type: string
+    default: "/var/lib/etcd2"
+
+  etcd_initial_cluster_token:
+    type: string
+
+  etcd_initial_cluster:
+    type: string
+
+  etcd_initial_cluster_state:
+    type: string
+    default: "new"
+
+
+outputs:
+  ip:
+    value:
+      - {get_attr: [instance, first_address]}

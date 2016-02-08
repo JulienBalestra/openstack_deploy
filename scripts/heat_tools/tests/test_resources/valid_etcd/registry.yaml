@@ -1,0 +1,6 @@
+resource_registry:
+  "lib::BaseInstance": base_instance.yaml
+  "lib::FIPInstance": fip_instance.yaml
+  "EtcdStatic": etcd_static.yaml
+  "VulcandProxy": etcd_vulcand_proxy.yaml
+  "EtcdDiscovery": etcd_discovery.yaml

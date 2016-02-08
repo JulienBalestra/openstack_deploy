@@ -1,0 +1,265 @@
+heat_template_version: 2014-10-16
+
+description: >
+  Discovery nested stack to build with AutoScalingGroup or ResourceGroup
+
+resources:
+  random:
+    type: OS::Heat::RandomString
+    properties:
+      length: 12
+      sequence: lettersdigits
+
+  port:
+    depends_on: [ random ]
+    type: OS::Neutron::Port
+    properties:
+      name:
+        str_replace:
+          template: bn%-rand%
+          params:
+            "bn%": { get_param: instance_basename }
+            "rand%": { get_attr: [random, value] }
+      network_id: { get_param: network }
+      fixed_ips:
+        - subnet_id: { get_param: subnet }
+      security_groups: [ { get_param: security_group } ]
+
+  instance:
+    depends_on: [ port, etcd_userdata ]
+    type: OS::Nova::Server
+    properties:
+      name:
+        str_replace:
+          template: bn%-rand%
+          params:
+            "bn%": { get_param: instance_basename }
+            "rand%": { get_attr: [random, value] }
+      key_name: { get_param: key_name }
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      networks:
+        - port: { get_resource: port }
+      user_data_format: RAW
+      user_data: { get_resource: etcd_userdata }
+      scheduler_hints:
+        group: { get_param: anti_affinity }
+      metadata:
+        etcd_name:
+          str_replace:
+            template: bn%-rand%
+            params:
+              "bn%": { get_param: instance_basename }
+              "rand%": { get_attr: [random, value] }
+        # Proxy
+        etcd_initial_cluster: { get_param: etcd_initial_cluster }
+        etcd_static_proxy_listen_client_urls: { get_param: etcd_static_proxy_listen_client_urls }
+        etcd_proxy_data_dir: { get_param: etcd_proxy_data_dir }
+
+        # Discovery
+        etcd_data_dir: { get_param: etcd_data_dir }
+        etcd_discovery: { get_param: etcd_discovery }
+        etcd_listen_peer_urls:
+          str_replace:
+            template: http://$ip:$port
+            params:
+              $ip: { get_attr: [port, fixed_ips, 0, ip_address] }
+              $port: 2380
+        etcd_listen_client_urls:
+          str_replace:
+            template: http://$ip:$port
+            params:
+              $ip: { get_attr: [port, fixed_ips, 0, ip_address] }
+              $port: 2379
+        etcd_initial_advertise_peer_urls:
+          str_replace:
+            template: http://$ip:$port
+            params:
+              $ip: { get_attr: [port, fixed_ips, 0, ip_address] }
+              $port: 2380
+        etcd_advertise_client_urls:
+          str_replace:
+            template: http://$ip:$port
+            params:
+              $ip: { get_attr: [port, fixed_ips, 0, ip_address] }
+              $port: 2379
+
+  etcd_userdata:
+    depends_on: [ port ]
+    type: OS::Heat::CloudConfig
+    properties:
+      cloud_config:
+        package_update: true
+        package_upgrade: false
+        packages:
+         - curl
+         - jq
+         - tar
+
+        write_files:
+          - path: /lib/systemd/system/etcd-proxy-static.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=etcd2 static proxy
+              Conflicts=etcd-proxy-static.service
+
+              [Service]
+              Type=idle
+              ExecStart=/bin/bash -x -c \
+              '/usr/bin/etcd \
+              -proxy on \
+              -name $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_name) \
+              -data-dir $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_proxy_data_dir) \
+              -listen-client-urls $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_static_proxy_listen_client_urls) \
+              -initial-cluster $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_initial_cluster)'
+              Restart=always
+              RestartSec=10s
+              LimitNOFILE=40000
+              TimeoutStartSec=0
+
+              [Install]
+              WantedBy=multi-user.target
+
+          - path: /lib/systemd/system/etcd.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=etcd2
+              Conflicts=etcd.service
+
+              [Service]
+              Type=notify
+              ExecStart=/bin/bash -c \
+              '/usr/bin/etcd \
+              -name $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_name) \
+              -data-dir $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_data_dir) \
+              -listen-peer-urls $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_listen_peer_urls) \
+              -listen-client-urls $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_listen_client_urls) \
+              -initial-advertise-peer-urls $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_initial_advertise_peer_urls) \
+              -advertise-client-urls $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_advertise_client_urls) \
+              -discovery $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_discovery)'
+
+              Restart=always
+              RestartSec=10s
+              LimitNOFILE=40000
+              TimeoutStartSec=0
+
+              [Install]
+              WantedBy=multi-user.target
+
+          - path: /etc/etcd_waiting
+            permissions: 0544
+            content: |
+              #! /bin/bash
+              TARGET=$1
+              DEFAULT_TARGET=$(curl 169.254.169.254/openstack/latest/meta_data.json | jq -r .meta.etcd_static_proxy_listen_client_urls)
+              SLEEP=10
+
+              function check_param
+              {
+                  if [ $# -ne 1 ]
+                  then
+                      echo "1 parameter expected TARGET: [$#] given"
+                      TARGET=${DEFAULT_TARGET}
+                  fi
+              }
+
+              function waiting_endpoint
+              {
+                  for i in {0..20}
+                  do
+                      curl ${TARGET}
+                      if [ $? -eq 0 ]
+                          then
+                            echo "loop ${i} -> ${TARGET} READY ret: $?"
+                            return 0
+                          fi
+                      echo "loop ${i} -> ${TARGET} not ready ret: $?"
+                      sleep ${SLEEP}
+                  done
+                  exit 2
+              }
+              # MAIN
+              set -x
+              check_param
+              waiting_endpoint
+
+        runcmd:
+          - set -x
+
+          # Install from release or object store stagging
+          - mkdir /tmp/etcd_install || rm -Rf /tmp/etcd_install/*
+          - [curl, -L, {get_param: insecure}, {get_param: etcd_tar}, -o, /tmp/etcd_install/etcd.tar.gz]
+          - cd -P /tmp/etcd_install
+          - tar -xzvf /tmp/etcd_install/etcd.tar.gz --strip-components=1
+          - mv /tmp/etcd_install/etcd /usr/bin/etcd
+          - mv /tmp/etcd_install/etcdctl /usr/bin/etcdctl
+          - [mkdir, -p, {get_param: etcd_data_dir}]
+          - [mkdir, -p, {get_param: etcd_proxy_data_dir}]
+
+          # Capable because of write_files section
+          - systemctl daemon-reload
+          - systemctl enable etcd-proxy-static.service
+          - systemctl start etcd-proxy-static.service
+          - systemctl status etcd-proxy-static.service
+          - systemctl enable etcd.service
+          - [/etc/etcd_waiting]
+          - [ curl, -XPUT, {get_param: create_discovery}, -d, {get_param: value_etcd_size} ]
+          - systemctl start etcd.service
+          - systemctl status etcd.service
+
+
+parameters:
+  instance_basename:
+    type: string
+
+  key_name:
+    type: string
+
+  security_group:
+    type: string
+
+  network:
+    type: string
+
+  subnet:
+    type: string
+
+  image:
+    type: string
+
+  flavor:
+    type: string
+
+  insecure:
+    type: string
+
+  etcd_tar:
+    type: string
+
+  create_discovery:
+    type: string
+
+  value_etcd_size:
+    type: string
+
+  anti_affinity:
+    type: string
+
+  etcd_initial_cluster:
+    type: string
+
+  etcd_static_proxy_listen_client_urls:
+    type: string
+
+  etcd_data_dir:
+    type: string
+    default: "/var/lib/etcd2"
+
+  etcd_proxy_data_dir:
+    type: string
+    default: "/var/lib/etcd2_proxy"
+
+  etcd_discovery:
+    type: string

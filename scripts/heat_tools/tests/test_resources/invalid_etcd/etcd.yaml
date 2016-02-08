@@ -25,7 +25,7 @@ resources:
       sequence: lettersdigits
 
   public_network:
-    depends_on: [ random ]
+    depends_on: [ random, inexistant_resource ] # Fail here -> inexistant_resource
     type: OS::Neutron::Net
     properties:
       admin_state_up: True

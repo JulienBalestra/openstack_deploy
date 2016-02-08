@@ -1,0 +1,326 @@
+heat_template_version: 2014-10-16
+
+description: >
+  Instance for proxy etcd
+
+resources:
+  random:
+    type: OS::Heat::RandomString
+    properties:
+      length: 10
+      sequence: lettersdigits
+
+  floating:
+    type: OS::Neutron::FloatingIP
+    depends_on: [ port ]
+    properties:
+      floating_network: { get_param: floatingip_network_name }
+      port_id: { get_resource: port }
+
+  port:
+    depends_on: [ random ]
+    type: OS::Neutron::Port
+    properties:
+      name:
+        str_replace:
+          template: bn%-rand%
+          params:
+            "bn%": { get_param: instance_basename }
+            "rand%": { get_attr: [random, value] }
+      network_id: { get_param: network }
+      fixed_ips:
+        - subnet_id: { get_param: subnet }
+      security_groups: [ { get_param: security_group } ]
+
+  instance:
+    depends_on: [ port, etcd_userdata ]
+    type: OS::Nova::Server
+    properties:
+      name:
+        str_replace:
+          template: bn%-rand%
+          params:
+            "bn%": { get_param: instance_basename }
+            "rand%": { get_attr: [random, value] }
+      key_name: { get_param: key_name }
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      networks:
+        - port: { get_resource: port }
+      user_data_format: RAW
+      user_data: { get_resource: etcd_userdata }
+      scheduler_hints:
+        group: { get_param: anti_affinity }
+      metadata:
+        etcd_name:
+          str_replace:
+            template: bn%-rand%
+            params:
+              "bn%": { get_param: instance_basename }
+              "rand%": { get_attr: [random, value] }
+        # Proxy
+        etcd_initial_cluster: { get_param: etcd_initial_cluster }
+        etcd_discovery: { get_param: etcd_discovery }
+
+        etcd_static_proxy_listen_client_urls: { get_param: etcd_static_proxy_listen_client_urls }
+        etcd_static_proxy_data_dir: { get_param: etcd_static_proxy_data_dir }
+
+        etcd_discovery_proxy_listen_client_urls: {get_param: etcd_discovery_proxy_listen_client_urls}
+        etcd_discovery_proxy_data_dir: { get_param: etcd_static_proxy_data_dir }
+
+        vulcand_listen_client_port: {get_param: vulcand_listen_client_port}
+        etcd_url_vulcand_listen_client_port:
+          str_replace:
+            template: etcd_static%vulcand_key%
+            params:
+              etcd_static%: { get_param: etcd_static_proxy_listen_client_urls }
+              vulcand_key%: { get_param: vulcand_url_listen_client_port }
+
+
+
+  etcd_userdata:
+    type: OS::Heat::CloudConfig
+    properties:
+      cloud_config:
+        package_update: true
+        package_upgrade: false
+        packages:
+         - curl
+         - jq
+         - tar
+
+        write_files:
+          - path: /lib/systemd/system/etcd-proxy-discovery.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=etcd2 static proxy
+              Conflicts=etcd-proxy-discovery.service
+
+              [Service]
+              Type=idle
+              ExecStart=/bin/bash -x -c \
+              '/usr/bin/etcd \
+              -proxy on \
+              -name $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_name) \
+              -data-dir $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_discovery_proxy_data_dir) \
+              -listen-client-urls $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_discovery_proxy_listen_client_urls) \
+              -discovery $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_discovery)'
+              Restart=always
+              RestartSec=10s
+              LimitNOFILE=40000
+              TimeoutStartSec=0
+
+              [Install]
+              WantedBy=multi-user.target
+
+          - path: /lib/systemd/system/etcd-proxy-static.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=etcd2 static proxy
+              Conflicts=etcd-proxy-static.service
+
+              [Service]
+              Type=idle
+              ExecStart=/bin/bash -x -c \
+              '/usr/bin/etcd \
+              -proxy on \
+              -name $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_name) \
+              -data-dir $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_static_proxy_data_dir) \
+              -listen-client-urls $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_static_proxy_listen_client_urls) \
+              -initial-cluster $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_initial_cluster)'
+              Restart=always
+              RestartSec=10s
+              LimitNOFILE=40000
+              TimeoutStartSec=0
+
+              [Install]
+              WantedBy=multi-user.target
+
+          - path: /lib/systemd/system/vulcand.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=vulcand
+              Conflicts=vulcand.service
+              Requires=etcd-proxy-discovery.service
+
+              [Service]
+              Type=idle
+              ExecStart=/bin/bash -c -x \
+              '/usr/bin/vulcand \
+                -etcd=$(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_static_proxy_listen_client_urls) \
+                -port=$(/usr/bin/curl \
+                  $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_url_vulcand_listen_client_port) \
+                    | /usr/bin/jq -r .node.value)'
+              Restart=always
+              RestartSec=10s
+              LimitNOFILE=40000
+              TimeoutStartSec=0
+
+              [Install]
+              WantedBy=multi-user.target
+
+          - path: /etc/etcd_waiting
+            permissions: 0544
+            content: |
+              #! /bin/bash
+
+              TARGET=$1
+              DEFAULT_TARGET=$(curl 169.254.169.254/openstack/latest/meta_data.json | jq -r .meta.etcd_static_proxy_listen_client_urls)
+              UPSERT=?prevExist=false
+              SLEEP=10
+
+              function check_param
+              {
+                  if [ $# -ne 1 ]
+                  then
+                      echo "1 parameter expected TARGET: [$#] given"
+                      TARGET=${DEFAULT_TARGET}
+                  fi
+              }
+
+              function waiting_endpoint
+              {
+                  for i in {0..20}
+                  do
+                      curl ${TARGET}
+                      if [ $? -eq 0 ]
+                          then
+                            echo "loop ${i} -> ${TARGET} READY ret: $?"
+                            return 0
+                          fi
+                      echo "loop ${i} -> ${TARGET} not ready ret: $?"
+                      sleep ${SLEEP}
+                  done
+                  exit 2
+              }
+
+              # MAIN
+              set -x
+              check_param
+              waiting_endpoint
+
+          - path: /etc/vulcand_rules
+            permissions: 0544
+            content: |
+              #! /bin/bash
+
+              STATIC_PROXY=$(curl 169.254.169.254/openstack/latest/meta_data.json | jq -r .meta.etcd_static_proxy_listen_client_urls)
+              DISCOVERY_PROXY=$(curl 169.254.169.254/openstack/latest/meta_data.json | jq -r .meta.etcd_discovery_proxy_listen_client_urls)
+              ETCD_VULCAND_URL_PORT=$(curl 169.254.169.254/openstack/latest/meta_data.json | jq -r .meta.etcd_url_vulcand_listen_client_port)
+              VULCAND_PORT=$(curl 169.254.169.254/openstack/latest/meta_data.json | jq -r .meta.vulcand_listen_client_port)
+              UPSERT=?prevExist=false
+
+              set -x
+              curl -XPUT ${STATIC_PROXY}/v2/keys/vulcand/backends/b1/backend${UPSERT} \
+                -d value='{"Type": "http"}'
+
+              curl -XPUT ${STATIC_PROXY}/v2/keys/vulcand/backends/b1/servers/srv1${UPSERT} \
+                -d value="{\"URL\": \"${DISCOVERY_PROXY}\" }"
+
+              curl -XPUT ${STATIC_PROXY}/v2/keys/vulcand/frontends/f1/frontend${UPSERT} \
+                -d value='{"Type": "http", "BackendId": "b1", "Route": "PathRegexp(\"/.*\")"}'
+
+              curl -XPUT ${ETCD_VULCAND_URL_PORT}${UPSERT} \
+                -d value=${VULCAND_PORT}
+
+        runcmd:
+          - set -x
+
+          # etcd install from release or object store stagging
+          - mkdir /tmp/etcd_install || rm -Rf /tmp/etcd_install/*
+          - [curl, -L, {get_param: insecure}, {get_param: etcd_tar}, -o, /tmp/etcd_install/etcd.tar.gz]
+          - cd -P /tmp/etcd_install
+          - tar -xzvf /tmp/etcd_install/etcd.tar.gz --strip-components=1
+          - mv /tmp/etcd_install/etcd /usr/bin/etcd
+          - mv /tmp/etcd_install/etcdctl /usr/bin/etcdctl
+          - [mkdir, -p, {get_param: etcd_static_proxy_data_dir}]
+          - [mkdir, -p, {get_param: etcd_discovery_proxy_data_dir}]
+
+          # start proxies
+          - systemctl daemon-reload
+          - systemctl enable etcd-proxy-static.service && systemctl start etcd-proxy-static.service
+          - systemctl enable etcd-proxy-discovery.service && systemctl start etcd-proxy-discovery.service
+          - mkdir /tmp/vulcand_install || rm -Rf /tmp/vulcand_install/*
+
+          # vulcand install from release or object store stagging
+          - [curl, -L, {get_param: insecure}, {get_param: vulcand_tar}, -o, /tmp/vulcand_install/vulcand.tar.gz]
+          - cd -P /tmp/vulcand_install
+          - tar -xzvf /tmp/vulcand_install/vulcand.tar.gz --strip-components=1
+          - mv /tmp/vulcand_install/vulcand /usr/bin/vulcand
+          - mv /tmp/vulcand_install/vctl /usr/bin/vctl
+          - mv /tmp/vulcand_install/vbundle /usr/bin/vbundle
+
+          - /etc/etcd_waiting
+          - /etc/vulcand_rules
+
+          - systemctl enable vulcand.service
+          - systemctl start vulcand.service
+
+
+parameters:
+  instance_basename:
+    type: string
+
+  key_name:
+    type: string
+
+  security_group:
+    type: string
+
+  network:
+    type: string
+
+  subnet:
+    type: string
+
+  image:
+    type: string
+
+  flavor:
+    type: string
+
+  insecure:
+    type: string
+
+  etcd_tar:
+    type: string
+
+  anti_affinity:
+    type: string
+
+  floatingip_network_name:
+    type: string
+
+  vulcand_tar:
+    type: string
+
+  etcd_initial_cluster:
+    type: string
+
+  etcd_static_proxy_listen_client_urls:
+    type: string
+
+  etcd_discovery:
+    type: string
+
+  etcd_discovery_proxy_listen_client_urls:
+    type: string
+
+  etcd_static_proxy_data_dir:
+    type: string
+    default: "/var/lib/etcd2_proxy_static"
+
+  etcd_discovery_proxy_data_dir:
+    type: string
+    default: "/var/lib/etcd2_proxy_discovery"
+
+  vulcand_listen_client_port:
+    type: number
+    default: 80
+
+  vulcand_url_listen_client_port:
+    type: string
+    default: "/v2/keys/vulcand/port"
