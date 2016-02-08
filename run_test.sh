@@ -27,6 +27,19 @@ function run_tests
     then
         exit 3
     fi
+    cd $(pwd)/scripts/heat_tools
+    bash valid_stack_integrity.sh
+     if [ $? -ne 0 ]
+    then
+        exit 4
+    fi
+    echo "ERROR MUST FOLLOW"
+    bash invalid_stack_integrity.sh
+     if [ $? -eq 0 ]
+    then
+        exit 5
+    fi
+    return 0
 }
 
 function main
