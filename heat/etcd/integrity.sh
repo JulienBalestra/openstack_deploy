@@ -3,7 +3,7 @@
 function go_to_dirname
 {
     echo "Go to working directory..."
-    cd $( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
+    cd $( cd -P "$( dirname "${BASH_SOURCE[0]}" )" && pwd -L && pwd -P )
     if [ $? -ne 0 ]
     then
         echo "go_to_dirname failed";
@@ -15,7 +15,7 @@ function go_to_dirname
 go_to_dirname
 
 
-stack_integrity.py \
+../../scripts/heat_tools/stack_integrity.py \
 -v True \
 -f etcd.yaml \
 -r registry.yaml \
