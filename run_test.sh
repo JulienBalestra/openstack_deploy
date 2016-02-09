@@ -35,9 +35,15 @@ function run_tests
     fi
     echo "ERROR MUST FOLLOW"
     bash invalid_stack_integrity.sh
-     if [ $? -eq 0 ]
+    if [ $? -eq 0 ]
     then
         exit 5
+    fi
+
+    $(pwd)/heat/etcd/integrity.sh
+    if [ $? -eq 0 ]
+    then
+        exit 6
     fi
     return 0
 }
@@ -45,6 +51,7 @@ function run_tests
 function main
 {
     go_to_dirname
+    alias sti="$(pwd)/script/heat_tools/stack_integrity.py"
     run_tests
 }
 
