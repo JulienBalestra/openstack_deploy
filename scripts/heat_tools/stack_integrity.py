@@ -67,7 +67,7 @@ class StackIntegrity(object):
 				else:
 					self._set_used_type(get_type, value, set_to_add)
 
-	def _generate_used_type(self, get_type, section):
+	def _deep_inside_nested_stack(self, get_type, section):
 		if type(section) is dict:
 			for key, value in section.iteritems():
 				if key == "type" and value in self.registries:
@@ -75,7 +75,7 @@ class StackIntegrity(object):
 					r = StackIntegrity(nested_file_path, self.registry_file_path, section["properties"].keys())
 					r.do_all()
 				else:
-					self._generate_used_type(get_type, value)
+					self._deep_inside_nested_stack(get_type, value)
 
 	def _set_parameters_section(self):
 		for i in self.parameters:
@@ -132,7 +132,7 @@ class StackIntegrity(object):
 		self._set_used_type("type", self.resources, types)
 		self.used_registries = types.intersection(self.registries.keys())
 		for i in self.registries:
-			self._generate_used_type(i, self.resources)
+			self._deep_inside_nested_stack(i, self.resources)
 
 
 def fast_arg_parsing():
