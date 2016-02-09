@@ -12,7 +12,7 @@
     
     heat stack-create \
     -f etcd.yaml  \
-    -P "context=my_$1-" \
+    -P "context=my_custom-" \
     -P image= \
     -P flavor= \
     -P dns_nameservers= \
