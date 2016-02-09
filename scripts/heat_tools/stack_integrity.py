@@ -9,11 +9,13 @@ STARTING_DIR = os.getcwd()
 class StackIntegrity(object):
 	appends = ["depends_on"]
 	registry_file_directory = None
+	indent = "   "
 
-	def __init__(self, stack_file_path, registry_file_path, parameters=None, verbose=False):
+	def __init__(self, stack_file_path, registry_file_path, parameters=None, verbose=False, level=-1):
 		self.verbose = verbose
+		self.level = level + 1
 		if verbose:
-			print "Instance for %s" % stack_file_path
+			print self.indent * self.level, "Instance for %s" % stack_file_path
 		if parameters:
 			self.given_parameters = set([k for k in parameters])
 
@@ -70,7 +72,8 @@ class StackIntegrity(object):
 				if key == "type" and value in self.registries:
 					nested_file_path = self.registries[value]
 					r = StackIntegrity(
-							nested_file_path, self.registry_file_path, section["properties"].keys(), self.verbose)
+							nested_file_path, self.registry_file_path,
+							section["properties"].keys(), self.verbose, self.level)
 					r.do_all()
 				else:
 					self._deep_inside_nested_stack(get_type, value)
@@ -117,12 +120,12 @@ class StackIntegrity(object):
 			raise AssertionError("%d != 0 %s" % (len(depends - resources_keys_set), depends - resources_keys_set))
 
 	@staticmethod
-	def runner(func, verbose):
+	def runner(func, verbose, indentation):
 		if verbose:
-			print func.__name__, "..."
+			print indentation, func.__name__, "..."
 		func()
 		if verbose:
-			print func.__name__, "OK\n"
+			print indentation, func.__name__, "OK\n"
 
 	def do_all(self):
 		for f in [
@@ -133,7 +136,7 @@ class StackIntegrity(object):
 			self.capable_parameters,
 			self.follow_nested_stack
 		]:
-			self.runner(f, self.verbose)
+			self.runner(f, self.verbose, self.level * self.indent)
 
 	def follow_nested_stack(self):
 		types = set()
