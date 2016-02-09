@@ -19,7 +19,6 @@ class StackIntegrity(object):
 			StackIntegrity.registry_file_directory = os.path.split(os.path.abspath(registry_file_path))[0]
 			print StackIntegrity.registry_file_directory
 
-
 		self.stack_content = self._get_content(stack_file_path)
 
 		self.parameters = self.stack_content["parameters"]
@@ -91,7 +90,10 @@ class StackIntegrity(object):
 	def assert_params_equality(self):
 		self._set_parameters_section()
 		self._set_used_type('get_param', self.resources, self.used_params)
-		assert self.declared_params == self.used_params
+		if self.declared_params != self.used_params:
+			raise AssertionError("%s vs %s" % (
+				self.declared_params - self.used_params,
+				self.used_params - self.declared_params))
 
 	def capable_outputs(self):
 		self._set_used_type('get_attr', self.outputs, self.declared_outputs)
@@ -99,7 +101,13 @@ class StackIntegrity(object):
 		assert len(self.declared_outputs - resources_names) == 0
 
 	def capable_resources(self):
+		attr_set = set()
+		resources_set = set(self.resources.keys())
 		self._set_used_type('get_resource', self.resources, self.declared_resources)
+		self._set_used_type('get_attr', self.resources, attr_set)
+
+		if len(set(attr_set - resources_set)) != 0:
+			raise AssertionError("%s" % set(attr_set - resources_set))
 		resources_names = set(self.resources.keys())
 		assert len(self.declared_outputs - resources_names) == 0
 
@@ -107,10 +115,9 @@ class StackIntegrity(object):
 		depends = set()
 		self._set_used_type("depends_on", self.resources, depends)
 		if len(depends - set(self.resources.keys())) != 0:
-			raise AssertionError("%d != 0 %s" %
-								 (len(depends - set(self.resources.keys())),
-								  depends - set(self.resources.keys()))
-								 )
+			raise AssertionError(
+					"%d != 0 %s" % (len(depends - set(self.resources.keys())),
+									depends - set(self.resources.keys())))
 
 	def do_all(self):
 		self.right_depends()
