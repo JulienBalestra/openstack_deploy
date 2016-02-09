@@ -41,12 +41,15 @@ function run_tests
     fi
 
     cd ${ROOT}
-    $(pwd)/heat/etcd/integrity.sh
-    if [ $? -ne 0 ]
-    then
-        exit 6
-    fi
-    return 0
+
+    for i in etcd etcd_client
+    do
+        $(pwd)/heat/${i}/integrity.sh
+        if [ $? -ne 0 ]
+        then
+            exit 6
+        fi
+    done
 }
 
 function main
