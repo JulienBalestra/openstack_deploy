@@ -40,6 +40,7 @@ function run_tests
         exit 5
     fi
 
+    go_to_dirname
     $(pwd)/heat/etcd/integrity.sh
     if [ $? -eq 0 ]
     then
