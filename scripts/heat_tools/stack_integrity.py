@@ -9,11 +9,13 @@ STARTING_DIR = os.getcwd()
 class StackIntegrity(object):
 	appends = ["depends_on"]
 	registry_file_directory = None
+	nested_done = []
 	indent = "   "
 
 	def __init__(self, stack_file_path, registry_file_path, parameters=None, verbose=False, level=-1):
 		self.verbose = verbose
 		self.level = level + 1
+		self.stack_file_path = stack_file_path
 		if verbose:
 			print self.indent * self.level, "Instance for %s" % stack_file_path
 		if parameters:
@@ -41,6 +43,9 @@ class StackIntegrity(object):
 		self.declared_resources = set()
 		self.used_registries = set()
 
+	def __repr__(self):
+		return self.stack_file_path
+
 	def _get_content(self, file_path):
 		if os.path.isfile(file_path) is False:
 			os.chdir(self.registry_file_directory)
@@ -66,15 +71,23 @@ class StackIntegrity(object):
 				else:
 					self._set_used_type(get_type, value, set_to_add)
 
+	def follow_nested_stack(self):
+		types = set()
+		self._set_used_type("type", self.resources, types)
+		self.used_registries = types.intersection(self.registries)
+		for i in self.registries:
+			self._deep_inside_nested_stack(i, self.resources)
+
 	def _deep_inside_nested_stack(self, get_type, section):
 		if type(section) is dict:
 			for key, value in section.iteritems():
 				if key == "type" and value in self.registries:
 					nested_file_path = self.registries[value]
-					r = StackIntegrity(
-							nested_file_path, self.registry_file_path,
-							section["properties"].keys(), self.verbose, self.level)
-					r.do_all()
+					if nested_file_path not in self.nested_done:
+						r = StackIntegrity(
+								nested_file_path, self.registry_file_path,
+								section["properties"].keys(), self.verbose, self.level)
+						r.do_all()
 				else:
 					self._deep_inside_nested_stack(get_type, value)
 
@@ -137,13 +150,7 @@ class StackIntegrity(object):
 			self.follow_nested_stack
 		]:
 			self.runner(f, self.verbose, self.level * self.indent)
-
-	def follow_nested_stack(self):
-		types = set()
-		self._set_used_type("type", self.resources, types)
-		self.used_registries = types.intersection()
-		for i in self.registries:
-			self._deep_inside_nested_stack(i, self.resources)
+			self.nested_done.append("%s" % self)
 
 
 def fast_arg_parsing():
@@ -160,9 +167,9 @@ def fast_arg_parsing():
 if __name__ == "__main__":
 	stack_file, parameters, registry_file_directory, verbose = fast_arg_parsing()
 	if verbose:
-		print "stack_file %s\n" \
+		print "stack_file \"%s\"\n" \
 			  "parameters %s\n" \
-			  "registry_file_directory %s\n" % (stack_file, parameters, registry_file_directory)
+			  "registry_file_directory \"%s\"\n" % (stack_file, parameters, registry_file_directory)
 
 	if stack_file is None:
 		raise AttributeError
