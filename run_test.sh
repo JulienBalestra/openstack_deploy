@@ -40,9 +40,9 @@ function run_tests
         exit 5
     fi
 
-    go_to_dirname
+    cd ${ROOT}
     $(pwd)/heat/etcd/integrity.sh
-    if [ $? -eq 0 ]
+    if [ $? -ne 0 ]
     then
         exit 6
     fi
@@ -52,6 +52,7 @@ function run_tests
 function main
 {
     go_to_dirname
+    ROOT=$(pwd)
     alias sti="$(pwd)/script/heat_tools/stack_integrity.py"
     run_tests
 }
