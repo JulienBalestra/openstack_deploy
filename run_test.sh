@@ -53,7 +53,7 @@ function main
 {
     go_to_dirname
     ROOT=$(pwd)
-    alias sti="$(pwd)/script/heat_tools/stack_integrity.py"
+    export PATH=${PATH}:"$(pwd)/script/heat_tools/"
     run_tests
 }
 

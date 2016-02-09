@@ -15,7 +15,7 @@ function go_to_dirname
 go_to_dirname
 
 
-sti \
+stack_integrity.py \
 -v True \
 -f etcd.yaml \
 -r registry.yaml \
