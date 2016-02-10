@@ -239,11 +239,15 @@ parameters:
     constraints:
     - type: Choice
       values:
+      - 1
       - 3
       - 5
       - 9
     constraints:
-      - range: { min: 3 }
+      - range: { min: 1 }
 
   plug_to_router:
     type: string
+    constraints:
+    - allowed_pattern: ".{8}-.{4}-.{4}-.{4}-.{12}"
+      description: Must be a router id
