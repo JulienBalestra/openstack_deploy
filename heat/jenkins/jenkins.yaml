@@ -1,7 +1,7 @@
 heat_template_version: 2014-10-16
 
 description: >
-  Build network, admin access requirements inside an empty tenant and deploy an Application
+  Jenkins Stack
 
 resources:
   random:
@@ -230,35 +230,113 @@ resources:
     type: OS::Heat::CloudConfig
     properties:
       cloud_config:
-        runcmd:
-          - [ echo, "START" ]
-          - [ echo, "hello_world" ]
-          - [ echo, "END" ]
+        package_update: true
+        package_upgrade: true
+        packages:
+         - curl
+         - jq
 
   jenkins_userdata:
     depends_on: [ slaves_group ]
     type: OS::Heat::CloudConfig
     properties:
       cloud_config:
+        package_update: true
+        package_upgrade: true
+        packages:
+         - curl
+         - openjdk-8-jre-headless
+         - daemon
+         - psmisc
+         - jq
+         - nginx
+
+        write_files:
+          - path: /tmp/nginx_jenkins
+            permissions: 0644
+            content: |
+              server {
+                listen          80;       # Listen on port 80 for IPv4 requests
+
+                server_name     jenkins.example.com;
+
+                #this is the jenkins web root directory (mentioned in the /etc/default/jenkins file)
+                root            /var/run/jenkins/war/;
+
+                access_log      /var/log/nginx/jenkins/access.log;
+                error_log       /var/log/nginx/jenkins/error.log;
+
+                location ~ "^/static/[0-9a-fA-F]{8}\/(.*)$" {
+
+                  #rewrite all static files into requests to the root
+                  #E.g /static/12345678/css/something.css will become /css/something.css
+                  rewrite "^/static/[0-9a-fA-F]{8}\/(.*)" /$1 last;
+                }
+
+                location /userContent {
+                      #have nginx handle all the static requests to the userContent folder files
+                      #note : This is the $JENKINS_HOME dir
+              	root /var/lib/jenkins/;
+                      if (!-f $request_filename){
+                         #this file does not exist, might be a directory or a /**view** url
+                         rewrite (.*) /$1 last;
+              	   break;
+                      }
+              	sendfile on;
+                }
+
+                location @jenkins {
+                    sendfile off;
+                    proxy_pass         http://127.0.0.1:8080;
+                    proxy_redirect     default;
+
+                    proxy_set_header   Host             $host;
+                    proxy_set_header   X-Real-IP        $remote_addr;
+                    proxy_set_header   X-Forwarded-For  $proxy_add_x_forwarded_for;
+                    proxy_max_temp_file_size 0;
+
+                    #this is the maximum upload size
+                    client_max_body_size       10m;
+                    client_body_buffer_size    128k;
+
+                    proxy_connect_timeout      90;
+                    proxy_send_timeout         90;
+                    proxy_read_timeout         90;
+
+                    proxy_buffer_size          4k;
+                    proxy_buffers              4 32k;
+                    proxy_busy_buffers_size    64k;
+                    proxy_temp_file_write_size 64k;
+              }
+
+                location / {
+
+                   # Optional configuration to detect and redirect iPhones
+                    if ($http_user_agent ~* '(iPhone|iPod)') {
+                        rewrite ^/$ /view/iphone/ redirect;
+                    }
+
+                    try_files $uri @jenkins;
+                 }
+              }
+
         runcmd:
-          - [ echo, "START" ]
-          - apt-get update -qq
-          - apt-get upgrade -y
-          - apt-get install openjdk-8-jre-headless daemon psmisc -y
           - [curl, { get_param: insecure}, { get_param: jenkins_deb}, -o, /tmp/jenkins.deb]
           - dpkg -i /tmp/jenkins.deb
-          - apt-get install nginx -y
           - mkdir -p /var/log/nginx/jenkins
-          - [curl, { get_param: insecure}, { get_param: nginx_jenkins}, -o, /etc/nginx/sites-available/default]
+          - mv /tmp/nginx_jenkins /etc/nginx/sites-available/default
           - service nginx reload
-          - [ echo, "END" ]
 
   bastion_userdata:
     type: OS::Heat::CloudConfig
     properties:
       cloud_config:
-        runcmd:
-          - [ echo, "hello_world" ]
+        package_update: true
+        package_upgrade: true
+        packages:
+         - curl
+         - jq
+
 
 parameters:
   key_name:
@@ -295,9 +373,6 @@ parameters:
     label: The debian image based for Instances
     description: image=debian-8-2016-01-01
   jenkins_deb:
-    type: string
-    label: The url where jenkins deb is store
-  nginx_jenkins:
     type: string
     label: The url where jenkins deb is store
   insecure:
