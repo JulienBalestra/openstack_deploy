@@ -263,6 +263,7 @@ resources:
           - systemctl enable vulcand.service
           - systemctl start vulcand.service
         users:
+          - default
           - name: etcd
             groups:
               - etcd

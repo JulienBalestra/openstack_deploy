@@ -139,6 +139,7 @@ resources:
           - systemctl enable etcd.service
           - systemctl start etcd.service && systemctl status etcd.service
         users:
+          - default
           - name: etcd
             groups:
               - etcd
