@@ -66,7 +66,7 @@ resources:
         etcd_static_proxy_data_dir: { get_param: etcd_static_proxy_data_dir }
 
         etcd_discovery_proxy_listen_client_urls: {get_param: etcd_discovery_proxy_listen_client_urls}
-        etcd_discovery_proxy_data_dir: { get_param: etcd_static_proxy_data_dir }
+        etcd_discovery_proxy_data_dir: { get_param: etcd_discovery_proxy_data_dir }
 
         vulcand_listen_client_port: {get_param: vulcand_listen_client_port}
         etcd_url_vulcand_listen_client_port:
@@ -169,6 +169,7 @@ resources:
             content: |
               #! /bin/bash
 
+              set -x
               TARGET=$1
               DEFAULT_TARGET=$(curl 169.254.169.254/openstack/latest/meta_data.json | jq -r .meta.etcd_static_proxy_listen_client_urls)
               UPSERT=?prevExist=false
@@ -200,7 +201,6 @@ resources:
               }
 
               # MAIN
-              set -x
               check_param
               waiting_endpoint
 
@@ -209,13 +209,13 @@ resources:
             content: |
               #! /bin/bash
 
+              set -x
               STATIC_PROXY=$(curl 169.254.169.254/openstack/latest/meta_data.json | jq -r .meta.etcd_static_proxy_listen_client_urls)
               DISCOVERY_PROXY=$(curl 169.254.169.254/openstack/latest/meta_data.json | jq -r .meta.etcd_discovery_proxy_listen_client_urls)
               ETCD_VULCAND_URL_PORT=$(curl 169.254.169.254/openstack/latest/meta_data.json | jq -r .meta.etcd_url_vulcand_listen_client_port)
               VULCAND_PORT=$(curl 169.254.169.254/openstack/latest/meta_data.json | jq -r .meta.vulcand_listen_client_port)
               UPSERT=?prevExist=false
 
-              set -x
               curl -XPUT ${STATIC_PROXY}/v2/keys/vulcand/backends/b1/backend${UPSERT} \
                 -d value='{"Type": "http"}'
 
@@ -230,7 +230,6 @@ resources:
 
         runcmd:
           - set -x
-
           # etcd install from release or object store stagging
           - mkdir /tmp/etcd_install || rm -Rf /tmp/etcd_install/*
           - [curl, -L, {get_param: insecure}, {get_param: etcd_tar}, -o, /tmp/etcd_install/etcd.tar.gz]
@@ -267,7 +266,6 @@ resources:
           - name: etcd
             groups:
               - etcd
-
 
 parameters:
   instance_basename:
