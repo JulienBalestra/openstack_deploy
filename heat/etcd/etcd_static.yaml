@@ -103,6 +103,7 @@ resources:
 
               [Service]
               Type=notify
+              User=etcd
               ExecStart=/bin/bash -x -c \
               '/usr/bin/etcd \
               -name $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_name) \
@@ -130,11 +131,17 @@ resources:
           - tar -xzvf /tmp/etcd_install/etcd.tar.gz --strip-components=1
           - mv /tmp/etcd_install/etcd /usr/bin/etcd
           - mv /tmp/etcd_install/etcdctl /usr/bin/etcdctl
+
           - [mkdir, -p, {get_param: etcd_data_dir}]
+          - [chown, -R, "etcd:etcd", {get_param: etcd_data_dir}]
+
           - systemctl daemon-reload
           - systemctl enable etcd.service
           - systemctl start etcd.service && systemctl status etcd.service
-
+        users:
+          - name: etcd
+            groups:
+              - etcd
 
 parameters:
   instance_basename:

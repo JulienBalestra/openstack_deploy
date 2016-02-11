@@ -99,6 +99,7 @@ resources:
 
               [Service]
               Type=idle
+              User=etcd
               ExecStart=/bin/bash -x -c \
               '/usr/bin/etcd \
               -proxy on \
@@ -123,6 +124,7 @@ resources:
 
               [Service]
               Type=idle
+              User=etcd
               ExecStart=/bin/bash -x -c \
               '/usr/bin/etcd \
               -proxy on \
@@ -237,7 +239,9 @@ resources:
           - mv /tmp/etcd_install/etcd /usr/bin/etcd
           - mv /tmp/etcd_install/etcdctl /usr/bin/etcdctl
           - [mkdir, -p, {get_param: etcd_static_proxy_data_dir}]
+          - [chown, -R, "etcd:etcd", {get_param: etcd_static_proxy_data_dir}]
           - [mkdir, -p, {get_param: etcd_discovery_proxy_data_dir}]
+          - [chown, -R, "etcd:etcd", {get_param: etcd_discovery_proxy_data_dir}]
 
           # start proxies
           - systemctl daemon-reload
@@ -258,6 +262,10 @@ resources:
 
           - systemctl enable vulcand.service
           - systemctl start vulcand.service
+        users:
+          - name: etcd
+            groups:
+              - etcd
 
 
 parameters:
