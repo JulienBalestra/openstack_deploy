@@ -82,7 +82,6 @@ resources:
         etcd_initial_cluster_state: { get_param: etcd_initial_cluster_state }
 
   etcd_userdata:
-    depends_on: [ port ]
     type: OS::Heat::CloudConfig
     properties:
       cloud_config:

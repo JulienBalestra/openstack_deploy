@@ -81,7 +81,6 @@ resources:
               $port: 2379
 
   etcd_userdata:
-    depends_on: [ port ]
     type: OS::Heat::CloudConfig
     properties:
       cloud_config:
