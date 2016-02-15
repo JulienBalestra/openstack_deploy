@@ -26,15 +26,7 @@ You'll need the following parameters to create the "nested_scaling":
 ### floatingip_network_name
 
     
-    neutron net-list
-
-    for n in $(neutron net-list | awk '{print $2}' | grep -v id)
-    do
-    if [ $(neutron net-show ${n} | grep "router:external" | awk '{print $4}') == "True" ]
-    then
-        neutron net-show ${n}
-    fi
-    done
+    neutron net-list --router:external True
     
 ### key_name
 
