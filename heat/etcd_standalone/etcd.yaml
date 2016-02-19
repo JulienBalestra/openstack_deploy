@@ -1,0 +1,352 @@
+heat_template_version: 2014-10-16
+
+description: >
+  1) Build a standalone etcd server
+
+resources:
+  random:
+    type: OS::Heat::RandomString
+    properties:
+      length: 4
+      sequence: lettersdigits
+
+  public_network:
+    depends_on: [ random ]
+    type: OS::Neutron::Net
+    properties:
+      admin_state_up: True
+      name:
+        str_replace:
+          template: ctx%rand%-ress%
+          params:
+            "ctx%": {get_param: context}
+            "ress%": "public_net"
+            "rand%": { get_attr: [random, value] }
+      shared: False
+
+  standalone_network:
+    depends_on: [ random ]
+    type: OS::Neutron::Net
+    properties:
+      admin_state_up: True
+      name:
+        str_replace:
+          template: ctx%rand%-ress%
+          params:
+            "ctx%": {get_param: context}
+            "ress%": "standalone_net"
+            "rand%": { get_attr: [random, value] }
+      shared: False
+
+  public_subnet:
+    type: OS::Neutron::Subnet
+    depends_on: [ public_network ]
+    properties:
+      name:
+        str_replace:
+          template: ctx%rand%-ress%
+          params:
+            "ctx%": {get_param: context}
+            "ress%": "public_subnet"
+            "rand%": { get_attr: [random, value] }
+      cidr: {get_param: public_subnet_cidr}
+      network: {get_resource: public_network}
+      allocation_pools: [{"start" : {get_param: public_subnet_start}, "end" : {get_param: public_subnet_end}}]
+      dns_nameservers: {get_param: dns_nameservers}
+      enable_dhcp: True
+      gateway_ip: {get_param: public_gateway_ip}
+      ip_version: 4
+      host_routes:
+        - destination: "0.0.0.0/0"
+          nexthop: {get_param: public_gateway_ip}
+
+  standalone_subnet:
+    type: OS::Neutron::Subnet
+    depends_on: [ standalone_network ]
+    properties:
+      name:
+        str_replace:
+          template: ctx%rand%-ress%
+          params:
+            "ctx%": {get_param: context}
+            "ress%": "standalone_subnet"
+            "rand%": { get_attr: [random, value] }
+      cidr: {get_param: standalone_subnet_cidr}
+      network: {get_resource: standalone_network}
+      allocation_pools: [{"start" : {get_param: standalone_subnet_start}, "end" : {get_param: standalone_subnet_end}}]
+      dns_nameservers: {get_param: dns_nameservers}
+      enable_dhcp: True
+      gateway_ip: {get_param: standalone_gateway_ip}
+      ip_version: 4
+      host_routes:
+        - destination: "0.0.0.0/0"
+          nexthop: {get_param: standalone_gateway_ip}
+
+  router:
+    type: OS::Neutron::Router
+    depends_on: [ random ]
+    properties:
+      name:
+        str_replace:
+          template: ctx%rand%-ress%
+          params:
+            "ctx%": {get_param: context}
+            "ress%": "router"
+            "rand%": { get_attr: [random, value] }
+      admin_state_up: True
+      external_gateway_info: {"network": {get_param: floatingip_network_name}}
+
+  public_interface:
+    type: OS::Neutron::RouterInterface
+    depends_on: [ router, public_subnet ]
+    properties:
+      router_id: { get_resource: router }
+      subnet_id: { get_resource: public_subnet }
+
+  standalone_interface:
+    type: OS::Neutron::RouterInterface
+    depends_on: [ router, standalone_subnet ]
+    properties:
+      router_id: { get_resource: router }
+      subnet_id: { get_resource: standalone_subnet }
+
+  etcd_securitygroup:
+      depends_on: [ random ]
+      type: OS::Neutron::SecurityGroup
+      properties:
+        name:
+          str_replace:
+            template: ctx%ress%-rand%
+            params:
+              "ctx%": {get_param: context}
+              "ress%": "standalone_etcd"
+              "rand%": { get_attr: [random, value] }
+        rules:
+          - remote_ip_prefix: {get_param: public_subnet_cidr}
+            protocol: tcp
+            port_range_min: 22
+            port_range_max: 22
+            direction: ingress
+          - remote_ip_prefix: {get_param: public_subnet_cidr}
+            protocol: tcp
+            port_range_min: 2379
+            port_range_max: 2379
+            direction: ingress
+          - remote_ip_prefix: 0.0.0.0/0
+            protocol: icmp
+            direction: ingress
+
+  bastion_securitygroup:
+      depends_on: [ random ]
+      type: OS::Neutron::SecurityGroup
+      properties:
+        name:
+          str_replace:
+            template: ctx%ress%-rand%
+            params:
+              "ctx%": {get_param: context}
+              "ress%": "bastion"
+              "rand%": { get_attr: [random, value] }
+        rules:
+          - remote_ip_prefix: 0.0.0.0/0
+            protocol: tcp
+            port_range_min: 22
+            port_range_max: 22
+            direction: ingress
+          - remote_ip_prefix: 0.0.0.0/0
+            protocol: icmp
+            direction: ingress
+
+  bastion_group:
+    depends_on: [ public_interface, bastion_securitygroup, bastion_userdata ]
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: { get_param: bastion_size }
+      resource_def:
+        type: "lib::FIPInstance"
+        properties:
+          key_name: { get_param: key_name }
+          security_group: { get_resource: bastion_securitygroup }
+          network: { get_resource: public_network }
+          subnet: { get_resource: public_subnet }
+          userdata: { get_resource: bastion_userdata }
+          flavor: { get_param: flavor }
+          image: { get_param: image }
+          floatingip_network_name: { get_param: floatingip_network_name }
+          instance_basename:
+            str_replace:
+              template: ctx%rand%-ress%-%index%
+              params:
+                "ctx%": {get_param: context}
+                "ress%": "bastion"
+                "rand%": { get_attr: [random, value] }
+
+  etcd_standalone:
+    depends_on: [ standalone_interface, etcd_securitygroup ]
+    type: "EtcdStandalone"
+    properties:
+      key_name: { get_param: key_name }
+      security_group: { get_resource: etcd_securitygroup }
+      network: { get_resource: standalone_network }
+      subnet: { get_resource: standalone_subnet }
+      flavor: { get_param: flavor }
+      image: { get_param: image }
+      ip_address: {get_param: ip_address}
+      insecure: {get_param: insecure}
+      etcd_tar: {get_param: etcd_tar}
+      instance_basename:
+        str_replace:
+          template: ctx%rand%-ress%
+          params:
+            ctx%: {get_param: context}
+            ress%: "etcd_standalone"
+            rand%: { get_attr: [random, value] }
+      etcd_initial_cluster:
+        str_replace:
+         template: __stn__=http://__ip__:2380
+         params:
+           __stn__: {get_param: standalone_name}
+           __ip__: {get_param: ip_address}
+
+  bastion_userdata:
+    type: OS::Heat::CloudConfig
+    properties:
+      cloud_config:
+        package_update: true
+        package_upgrade: true
+        packages:
+         - curl
+         - jq
+        final_message: "The system is finally up, after ${UPTIME} seconds"
+
+outputs:
+  base_name:
+    description: Random value used to tag stack resources
+    value:
+      - { get_attr: [random, value] }
+
+parameters:
+  context:
+    type: string
+    default: ""
+
+  key_name:
+    type: string
+    label: Name of keypair to assign to servers
+    description: key_name=foo
+    constraints:
+      - custom_constraint: nova.keypair
+
+  standalone_subnet_cidr:
+    type: string
+    default: "192.168.1.0/24"
+    constraints:
+      - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}/[0-9]{1,2}"
+        description: Must be a CIDR like 192.168.1.0/24
+
+  standalone_subnet_start:
+    type: string
+    default: "192.168.1.100"
+    constraints:
+      - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}"
+        description: Must be a valid IP address like 192.168.1.200
+
+  standalone_subnet_end:
+    type: string
+    default: "192.168.1.200"
+    constraints:
+      - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}"
+        description: Must be a valid IP address like 192.168.1.200
+
+  standalone_gateway_ip:
+    type: string
+    default: "192.168.1.254"
+    constraints:
+      - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}"
+        description: Must be a valid IP address like 192.168.1.200
+
+  standalone_gateway_ip:
+    type: string
+    default: "192.168.1.254"
+    constraints:
+      - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}"
+        description: Must be a valid IP address like 192.168.1.200
+
+  public_subnet_cidr:
+    type: string
+    default: "192.168.0.0/24"
+    constraints:
+      - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}/[0-9]{1,2}"
+        description: Must be a CIDR like 192.168.1.0/24
+
+  public_subnet_start:
+    type: string
+    default: "192.168.0.100"
+    constraints:
+      - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}"
+        description: Must be a valid IP address like 192.168.1.200
+
+  public_subnet_end:
+    type: string
+    default: "192.168.0.200"
+    constraints:
+      - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}"
+        description: Must be a valid IP address like 192.168.1.200
+
+  public_gateway_ip:
+    type: string
+    default: "192.168.0.254"
+    constraints:
+      - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}"
+        description: Must be a valid IP address like 192.168.1.200
+
+  dns_nameservers:
+    type: comma_delimited_list
+    label: DNS nameservers
+    description: dns_nameservers=8.8.8.8,8.8.4.4
+
+  floatingip_network_name:
+    type: string
+    label: The Floating IP network for NAT
+    description: floatingip_network_name=public
+
+  flavor:
+    type: string
+    label: The flavor for Instances
+    description: flavor=m1.medium
+    constraints:
+      - custom_constraint: nova.flavor
+
+  image:
+    type: string
+    label: The debian image based for Instances
+    description: image=debian-8-2016-01-01
+    constraints:
+      - custom_constraint: glance.image
+
+  bastion_size:
+    type: number
+    default: 1
+    constraints:
+      - range: { min: 0, max: 2 }
+
+  ip_address:
+    type: string
+    default: "192.168.1.11"
+    description: Ugly way to stay DRY
+    constraints:
+      - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}"
+        description: Must be a custom IP address (192.168.1.1 || 192.168.1.10) && ! 192.168.1.100
+
+  standalone_name:
+    type: string
+    default: "standalone"
+
+  etcd_tar:
+    type: string
+    description: "https://github.com/coreos/etcd/releases/version/arch.tar.gz"
+
+  insecure:
+    type: string
+    default: "--insecure"
+    description: Warning with curl command for https

@@ -1,0 +1,3 @@
+resource_registry:
+  "EtcdStandalone": etcd_standalone.yaml
+  "lib::FIPInstance": ../lib/fip_instance.yaml

@@ -75,8 +75,8 @@ class StackIntegrity(object):
 		types = set()
 		self._set_used_type("type", self.resources, types)
 		self.used_registries = types.intersection(self.registries)
-		for i in self.registries:
-			self._deep_inside_nested_stack(i, self.resources)
+		for stack_type in self.registries:
+			self._deep_inside_nested_stack(stack_type, self.resources)
 
 	def _deep_inside_nested_stack(self, get_type, section):
 		if type(section) is dict:
