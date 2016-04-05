@@ -39,6 +39,8 @@ resources:
       flavor: { get_param: flavor }
       networks:
         - port: { get_resource: port }
+      scheduler_hints:
+        group: { get_param: anti_affinity }
 
   floating:
     type: OS::Neutron::FloatingIP
@@ -68,6 +70,10 @@ parameters:
 
   instance_basename:
     type: string
+
+  anti_affinity:
+    type: string
+
 
 outputs:
   ip:

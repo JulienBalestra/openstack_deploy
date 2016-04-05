@@ -20,10 +20,10 @@ go_to_dirname
 -f coreos.yaml \
 -r registry.yaml \
 -P  "context" \
-    "image" \
-    "image_bastion" \
-    "flavor" \
-    "flavor_bastion" \
+    "coreos_image" \
+    "bastion_image" \
+    "coreos_flavor" \
+    "bastion_flavor" \
     "dns_nameservers" \
     "key_name" \
     "floatingip_network_name"
