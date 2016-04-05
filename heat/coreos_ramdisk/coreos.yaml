@@ -124,8 +124,8 @@ resources:
           network: { get_resource: network }
           subnet: { get_resource: subnet }
           userdata: { get_resource: bastion_userdata }
-          flavor: { get_param: flavor }
-          image: { get_param: image }
+          flavor: { get_param: flavor_bastion }
+          image: { get_param: image_bastion }
           floatingip_network_name: { get_param: floatingip_network_name }
           instance_basename:
             str_replace:
@@ -217,7 +217,15 @@ parameters:
     type: string
     label: The flavor for Instances
     description: flavor=m1.medium
+  flavor_bastion:
+    type: string
+    label: The flavor for Instances
+    description: flavor=m1.medium
   image:
+    type: string
+    label: The debian image based for Instances
+    description: image=debian-8-2016-01-01
+  image_bastion:
     type: string
     label: The debian image based for Instances
     description: image=debian-8-2016-01-01

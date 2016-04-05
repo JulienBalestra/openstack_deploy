@@ -21,7 +21,9 @@ go_to_dirname
 -r registry.yaml \
 -P  "context" \
     "image" \
+    "image_bastion" \
     "flavor" \
+    "flavor_bastion" \
     "dns_nameservers" \
     "key_name" \
     "floatingip_network_name"
