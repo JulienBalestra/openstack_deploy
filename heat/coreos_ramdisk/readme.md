@@ -2,41 +2,12 @@
 
 ## Parameters
 
-You'll need the following parameters to create the "nested_scaling":
+You'll need the following parameters to create the stack:
 
-* flavor
-* image
-* floatingip_network_name
-* key_name
-* dns_nameservers
-
-### flavor
-
-
-    nova flavor-list
-
-
-### image
-
-
-    nova image-list
-    glance image-list
-    
-   
-### floatingip_network_name
-
-    
-    neutron net-list --router:external True
-    
-### key_name
-
-    nova keypair-list
-    
-    nova keypair-add my_key > my_private_key && chmod 400 my_private_key
-    
-    
-### dns_nameservers
-
-  
-    nm-tool | grep DNS 
-    cat /etc/resolv.conf
+* coreos_image=coreos_ipxe
+* coreos_flavor=m1.highmem
+* dns_nameservers=8.8.8.8
+* key_name=keypair
+* floatingip_network_name=public
+* bastion_image=Debian Jessie
+* bastion_flavor=m1.tiny
