@@ -42,7 +42,7 @@ function run_tests
 
     cd ${ROOT}
 
-    for i in etcd etcd_client fast_instance jenkins etcd_standalone
+    for i in etcd etcd_client fast_instance jenkins etcd_standalone coreos_ramdisk
     do
         $(pwd)/heat/${i}/integrity.sh
         if [ $? -ne 0 ]
