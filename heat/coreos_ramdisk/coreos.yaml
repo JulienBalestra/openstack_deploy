@@ -24,7 +24,7 @@ resources:
             "rand%": { get_attr: [random, value] }
       shared: False
 
-  coreos_network:
+  coreos_member_network:
     depends_on: [ random ]
     type: OS::Neutron::Net
     properties:
@@ -34,7 +34,21 @@ resources:
           template: ctx%rand%-ress%
           params:
             "ctx%": {get_param: context}
-            "ress%": "coreos_net"
+            "ress%": "coreos_member_net"
+            "rand%": { get_attr: [random, value] }
+      shared: False
+
+  coreos_proxy_network:
+    depends_on: [ random ]
+    type: OS::Neutron::Net
+    properties:
+      admin_state_up: True
+      name:
+        str_replace:
+          template: ctx%rand%-ress%
+          params:
+            "ctx%": {get_param: context}
+            "ress%": "coreos_proxy_net"
             "rand%": { get_attr: [random, value] }
       shared: False
 
@@ -60,27 +74,49 @@ resources:
         - destination: "0.0.0.0/0"
           nexthop: {get_param: public_gateway_ip}
 
-  coreos_subnet:
+  coreos_member_subnet:
     type: OS::Neutron::Subnet
-    depends_on: [ coreos_network ]
+    depends_on: [ coreos_member_network ]
     properties:
       name:
         str_replace:
           template: ctx%rand%-ress%
           params:
             "ctx%": {get_param: context}
-            "ress%": "coreos_subnet"
+            "ress%": "coreos_member_subnet"
             "rand%": { get_attr: [random, value] }
-      cidr: {get_param: coreos_subnet_cidr}
-      network: {get_resource: coreos_network}
-      allocation_pools: [{"start" : {get_param: coreos_subnet_start}, "end" : {get_param: coreos_subnet_end}}]
+      cidr: {get_param: coreos_member_subnet_cidr}
+      network: {get_resource: coreos_member_network}
+      allocation_pools: [{"start" : {get_param: coreos_member_subnet_start}, "end" : {get_param: coreos_member_subnet_end}}]
       dns_nameservers: {get_param: dns_nameservers}
       enable_dhcp: True
-      gateway_ip: {get_param: coreos_gateway_ip}
+      gateway_ip: {get_param: coreos_member_gateway_ip}
       ip_version: 4
       host_routes:
         - destination: "0.0.0.0/0"
-          nexthop: {get_param: coreos_gateway_ip}
+          nexthop: {get_param: coreos_member_gateway_ip}
+
+  coreos_proxy_subnet:
+    type: OS::Neutron::Subnet
+    depends_on: [ coreos_proxy_network ]
+    properties:
+      name:
+        str_replace:
+          template: ctx%rand%-ress%
+          params:
+            "ctx%": {get_param: context}
+            "ress%": "coreos_proxy_subnet"
+            "rand%": { get_attr: [random, value] }
+      cidr: {get_param: coreos_proxy_subnet_cidr}
+      network: {get_resource: coreos_proxy_network}
+      allocation_pools: [{"start" : {get_param: coreos_proxy_subnet_start}, "end" : {get_param: coreos_proxy_subnet_end}}]
+      dns_nameservers: {get_param: dns_nameservers}
+      enable_dhcp: True
+      gateway_ip: {get_param: coreos_proxy_gateway_ip}
+      ip_version: 4
+      host_routes:
+        - destination: "0.0.0.0/0"
+          nexthop: {get_param: coreos_proxy_gateway_ip}
 
   router:
     type: OS::Neutron::Router
@@ -103,12 +139,19 @@ resources:
       router_id: { get_resource: router }
       subnet_id: { get_resource: public_subnet }
 
-  coreos_interface:
+  coreos_member_interface:
     type: OS::Neutron::RouterInterface
-    depends_on: [ router, coreos_subnet ]
+    depends_on: [ router, coreos_member_subnet ]
     properties:
       router_id: { get_resource: router }
-      subnet_id: { get_resource: coreos_subnet }
+      subnet_id: { get_resource: coreos_member_subnet }
+
+  coreos_proxy_interface:
+    type: OS::Neutron::RouterInterface
+    depends_on: [ router, coreos_proxy_subnet ]
+    properties:
+      router_id: { get_resource: router }
+      subnet_id: { get_resource: coreos_proxy_subnet }
 
   coreos_securitygroup:
       depends_on: [ random ]
@@ -181,7 +224,20 @@ resources:
                 "ress%": "bastion"
                 "rand%": { get_attr: [random, value] }
 
-  coreos_anti:
+  coreos_member_anti:
+    depends_on: [ random ]
+    type: OS::Nova::ServerGroup
+    properties:
+      name:
+        str_replace:
+          template: ctx%ress%-rand%
+          params:
+            "ctx%": {get_param: context}
+            "ress%": "coreos_member"
+            "rand%": { get_attr: [random, value] }
+      policies: ["anti-affinity"] # Beware about the number of compute nodes
+
+  coreos_proxy_anti:
     depends_on: [ random ]
     type: OS::Nova::ServerGroup
     properties:
@@ -194,22 +250,22 @@ resources:
             "rand%": { get_attr: [random, value] }
       policies: ["anti-affinity"] # Beware about the number of compute nodes
 
-  coreos_group:
-    depends_on: [ coreos_interface, coreos_securitygroup, coreos_anti ]
+  coreos_member_group:
+    depends_on: [ coreos_member_interface, coreos_securitygroup, coreos_member_anti ]
     type: OS::Heat::AutoScalingGroup
     properties:
       min_size: 1
-      desired_capacity: { get_param: coreos_size }
+      desired_capacity: { get_param: coreos_member_size }
       max_size: 9
       rolling_updates: {"max_batch_size": 1, "min_in_service": 2, "pause_time": 60}
       resource:
         type: "lib::RAMInstance"
         properties:
-          anti_affinity: { get_resource: coreos_anti }
+          anti_affinity: { get_resource: coreos_member_anti }
           key_name: { get_param: key_name }
           security_group: { get_resource: coreos_securitygroup }
-          network: { get_resource: coreos_network }
-          subnet: { get_resource: coreos_subnet }
+          network: { get_resource: coreos_member_network }
+          subnet: { get_resource: coreos_member_subnet }
           flavor: { get_param: coreos_flavor }
           image: { get_param: coreos_image }
           floatingip_network_name: { get_param: floatingip_network_name }
@@ -219,23 +275,68 @@ resources:
              params:
                "ctx%": {get_param: context}
                "rand%": { get_attr: [random, value] }
-               "ress%": "coreos"
+               "ress%": "coreos_member"
 
-  scale_up:
-    depends_on: [ coreos_group ]
+  coreos_proxy_group:
+    depends_on: [ coreos_proxy_interface, coreos_securitygroup, coreos_proxy_anti ]
+    type: OS::Heat::AutoScalingGroup
+    properties:
+      min_size: 0
+      desired_capacity: { get_param: coreos_proxy_size }
+      max_size: 9
+      rolling_updates: {"max_batch_size": 1, "min_in_service": 2, "pause_time": 60}
+      resource:
+        type: "lib::RAMInstance"
+        properties:
+          anti_affinity: { get_resource: coreos_proxy_anti }
+          key_name: { get_param: key_name }
+          security_group: { get_resource: coreos_securitygroup }
+          network: { get_resource: coreos_proxy_network }
+          subnet: { get_resource: coreos_proxy_subnet }
+          flavor: { get_param: coreos_flavor }
+          image: { get_param: coreos_image }
+          floatingip_network_name: { get_param: floatingip_network_name }
+          instance_basename:
+            str_replace:
+             template: ctx%rand%-ress%
+             params:
+               "ctx%": {get_param: context}
+               "rand%": { get_attr: [random, value] }
+               "ress%": "coreos_proxy"
+
+  scale_up_member:
+    depends_on: [ coreos_member_group ]
     type: OS::Heat::ScalingPolicy
     properties:
       adjustment_type: change_in_capacity
-      auto_scaling_group_id: {get_resource: coreos_group}
+      auto_scaling_group_id: {get_resource: coreos_member_group}
       cooldown: 30
       scaling_adjustment: 1
 
-  scale_down:
-    depends_on: [ coreos_group ]
+  scale_down_member:
+    depends_on: [ coreos_member_group ]
     type: OS::Heat::ScalingPolicy
     properties:
       adjustment_type: change_in_capacity
-      auto_scaling_group_id: {get_resource: coreos_group}
+      auto_scaling_group_id: {get_resource: coreos_member_group}
+      cooldown: 30
+      scaling_adjustment: -1
+
+  scale_up_proxy:
+    depends_on: [ coreos_proxy_group ]
+    type: OS::Heat::ScalingPolicy
+    properties:
+      adjustment_type: change_in_capacity
+      auto_scaling_group_id: {get_resource: coreos_proxy_group}
+      cooldown: 30
+      scaling_adjustment: 1
+
+  scale_down_proxy:
+    depends_on: [ coreos_proxy_group ]
+    type: OS::Heat::ScalingPolicy
+    properties:
+      adjustment_type: change_in_capacity
+      auto_scaling_group_id: {get_resource: coreos_proxy_group}
       cooldown: 30
       scaling_adjustment: -1
 
@@ -255,23 +356,44 @@ parameters:
     label: Name of keypair to assign to servers
     description: key_name=foo
 
-  coreos_subnet_cidr:
+  coreos_member_subnet_cidr:
     type: string
     default: "192.168.2.0/24"
     constraints:
       - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}/[0-9]{1,2}"
         description: Must be a CIDR like 192.168.1.0/24
 
-  coreos_subnet_start:
+  coreos_member_subnet_start:
     type: string
     default: "192.168.2.100"
     constraints:
       - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}"
         description: Must be a valid IP address like 192.168.1.200
 
-  coreos_subnet_end:
+  coreos_member_subnet_end:
     type: string
     default: "192.168.2.200"
+    constraints:
+      - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}"
+        description: Must be a valid IP address like 192.168.1.200
+
+  coreos_proxy_subnet_cidr:
+    type: string
+    default: "192.168.1.0/24"
+    constraints:
+      - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}/[0-9]{1,2}"
+        description: Must be a CIDR like 192.168.1.0/24
+
+  coreos_proxy_subnet_start:
+    type: string
+    default: "192.168.1.100"
+    constraints:
+      - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}"
+        description: Must be a valid IP address like 192.168.1.200
+
+  coreos_proxy_subnet_end:
+    type: string
+    default: "192.168.1.200"
     constraints:
       - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}"
         description: Must be a valid IP address like 192.168.1.200
@@ -304,9 +426,16 @@ parameters:
       - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}"
         description: Must be a valid IP address like 192.168.1.200
 
-  coreos_gateway_ip:
+  coreos_member_gateway_ip:
     type: string
     default: "192.168.2.254"
+    constraints:
+      - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}"
+        description: Must be a valid IP address like 192.168.1.200
+
+  coreos_proxy_gateway_ip:
+    type: string
+    default: "192.168.1.254"
     constraints:
       - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}"
         description: Must be a valid IP address like 192.168.1.200
@@ -338,31 +467,42 @@ parameters:
     label: The debian image based for Instances
     description: image=debian-8-2016-01-01
 
-  coreos_size:
+  coreos_member_size:
     type: number
     default: 3
     constraints:
     - type: Choice
       values:
+      - 1
       - 3
       - 5
       - 9
     constraints:
-      - range: { min: 3 }
+      - range: { min: 1 }
+
+  coreos_proxy_size:
+    type: number
+    default: 0
 
   bastion_size:
     type: number
-    default: 1
+    default: 0
     constraints:
       - range: { min: 0, max: 2 }
 
 outputs:
-  scale_up:
+  scale_up_member:
     value:
-      - {get_attr: [scale_up, alarm_url]}
+      - {get_attr: [scale_up_member, alarm_url]}
   scale_down:
     value:
-      - {get_attr: [scale_down, alarm_url]}
+      - {get_attr: [scale_down_member, alarm_url]}
+  scale_up_member:
+    value:
+      - {get_attr: [scale_up_proxy, alarm_url]}
+  scale_down:
+    value:
+      - {get_attr: [scale_down_proxy, alarm_url]}
   base_name:
     description: Random value used to tag stack resources
     value:
