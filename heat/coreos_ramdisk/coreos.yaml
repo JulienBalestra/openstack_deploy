@@ -250,8 +250,32 @@ resources:
             "rand%": { get_attr: [random, value] }
       policies: ["anti-affinity"] # Beware about the number of compute nodes
 
+  pool:
+    depends_on: [ public_subnet ]
+    type: OS::Neutron::Pool
+    properties:
+      protocol: HTTP
+      subnet_id: {get_resource: public_subnet}
+      lb_method: ROUND_ROBIN
+      vip:
+        protocol_port: 80
+
+  lb:
+    depends_on: [ pool ]
+    type: OS::Neutron::LoadBalancer
+    properties:
+      protocol_port: 80
+      pool_id: {get_resource: pool}
+
+  lb_floating:
+    depends_on: [ pool ]
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: floatingip_network_name }
+      port_id: {get_attr: [pool, vip, port_id]}
+
   coreos_member_group:
-    depends_on: [ coreos_member_interface, coreos_securitygroup, coreos_member_anti ]
+    depends_on: [ coreos_member_interface, coreos_securitygroup, coreos_member_anti, pool ]
     type: OS::Heat::AutoScalingGroup
     properties:
       min_size: 1
@@ -261,6 +285,7 @@ resources:
       resource:
         type: "lib::RAMInstance"
         properties:
+          pool_id: {get_resource: pool}
           anti_affinity: { get_resource: coreos_member_anti }
           key_name: { get_param: key_name }
           security_group: { get_resource: coreos_securitygroup }
@@ -278,7 +303,7 @@ resources:
                "ress%": "coreos_member"
 
   coreos_proxy_group:
-    depends_on: [ coreos_proxy_interface, coreos_securitygroup, coreos_proxy_anti ]
+    depends_on: [ coreos_member_group, coreos_proxy_interface, coreos_securitygroup, coreos_proxy_anti, pool ]
     type: OS::Heat::AutoScalingGroup
     properties:
       min_size: 0
@@ -288,6 +313,7 @@ resources:
       resource:
         type: "lib::RAMInstance"
         properties:
+          pool_id: {get_resource: pool}
           anti_affinity: { get_resource: coreos_proxy_anti }
           key_name: { get_param: key_name }
           security_group: { get_resource: coreos_securitygroup }
@@ -507,3 +533,6 @@ outputs:
     description: Random value used to tag stack resources
     value:
       - { get_attr: [random, value] }
+  lb:
+    value:
+      - { get_attr: [lb_floating, floating_ip_address] }
