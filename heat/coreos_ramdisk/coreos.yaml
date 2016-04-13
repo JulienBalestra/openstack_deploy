@@ -520,15 +520,17 @@ outputs:
   scale_up_member:
     value:
       - {get_attr: [scale_up_member, alarm_url]}
-  scale_down:
-    value:
-      - {get_attr: [scale_down_member, alarm_url]}
-  scale_up_member:
+  scale_up_proxy:
     value:
       - {get_attr: [scale_up_proxy, alarm_url]}
-  scale_down:
+
+  scale_down_member:
+    value:
+      - {get_attr: [scale_down_member, alarm_url]}
+  scale_down_proxy:
     value:
       - {get_attr: [scale_down_proxy, alarm_url]}
+
   base_name:
     description: Random value used to tag stack resources
     value:
