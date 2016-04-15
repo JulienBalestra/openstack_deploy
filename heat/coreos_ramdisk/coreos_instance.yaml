@@ -50,12 +50,13 @@ resources:
       port_id: { get_resource: port }
 
   member:
-    depends_on: [ instance ]
+    depends_on: [ port, instance ]
     type: OS::Neutron::PoolMember
     properties:
       pool_id: {get_param: pool_id}
-      address: {get_attr: [instance, first_address]}
+      address:  {get_attr: [ port, fixed_ips ] }
       protocol_port: 80
+      weight: {get_param: weight}
 
 
 parameters:
@@ -84,6 +85,9 @@ parameters:
 
   pool_id:
     type: string
+
+  weight:
+    type: number
 
 
 outputs:

@@ -285,6 +285,7 @@ resources:
       resource:
         type: "lib::RAMInstance"
         properties:
+          weight: 1
           pool_id: {get_resource: pool}
           anti_affinity: { get_resource: coreos_member_anti }
           key_name: { get_param: key_name }
@@ -313,6 +314,7 @@ resources:
       resource:
         type: "lib::RAMInstance"
         properties:
+          weight: 2
           pool_id: {get_resource: pool}
           anti_affinity: { get_resource: coreos_proxy_anti }
           key_name: { get_param: key_name }
