@@ -54,7 +54,7 @@ resources:
     type: OS::Neutron::PoolMember
     properties:
       pool_id: {get_param: pool_id}
-      address:  {get_attr: [ port, fixed_ips ] }
+      address:  { get_attr: [port, fixed_ips, 0, ip_address] }
       protocol_port: 80
       weight: {get_param: weight}
 
