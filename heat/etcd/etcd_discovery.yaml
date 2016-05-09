@@ -107,7 +107,7 @@ resources:
               Type=idle
               User=etcd
               ExecStart=/bin/bash -x -c \
-              '/usr/bin/etcd \
+              '/usr/sbin/etcd \
               -proxy on \
               -name $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_name) \
               -data-dir $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_proxy_data_dir) \
@@ -132,7 +132,7 @@ resources:
               Type=notify
               User=etcd
               ExecStart=/bin/bash -x -c \
-              '/usr/bin/etcd \
+              '/usr/sbin/etcd \
               -name $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_name) \
               -data-dir $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_data_dir) \
               -listen-peer-urls $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_listen_peer_urls) \
@@ -152,7 +152,7 @@ resources:
           - path: /etc/etcd_waiting
             permissions: 0544
             content: |
-              #! /bin/bash
+              #! /usr/bin/env bash
               TARGET=$1
               DEFAULT_TARGET=$(/usr/bin/curl 169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_static_proxy_listen_client_urls)
               SLEEP=10
@@ -187,15 +187,15 @@ resources:
               waiting_endpoint
 
         runcmd:
-          - set -x
+          - [set, -x]
 
           # Install from release or object store stagging
           - mkdir /tmp/etcd_install || rm -Rf /tmp/etcd_install/*
           - [curl, -L, {get_param: insecure}, {get_param: etcd_tar}, -o, /tmp/etcd_install/etcd.tar.gz]
-          - cd -P /tmp/etcd_install
-          - tar -xzvf /tmp/etcd_install/etcd.tar.gz --strip-components=1
-          - mv /tmp/etcd_install/etcd /usr/bin/etcd
-          - mv /tmp/etcd_install/etcdctl /usr/bin/etcdctl
+          - [cd, -P, /tmp/etcd_install]
+          - [tar, -xzvf, /tmp/etcd_install/etcd.tar.gz, --strip-components=1]
+          - [mv, /tmp/etcd_install/etcd, /usr/sbin/etcd]
+          - [mv, /tmp/etcd_install/etcdctl, /usr/bin/etcdctl]
 
           - [mkdir, -p, {get_param: etcd_data_dir}]
           - [chown, -R, "etcd:etcd", {get_param: etcd_data_dir}]
@@ -204,15 +204,15 @@ resources:
           - [chown, -R, "etcd:etcd", {get_param: etcd_proxy_data_dir}]
 
           # Capable because of write_files section
-          - systemctl daemon-reload
-          - systemctl enable etcd-proxy-static.service
-          - systemctl start etcd-proxy-static.service
-          - systemctl status etcd-proxy-static.service
-          - systemctl enable etcd.service
+          - [systemctl, daemon-reload]
+          - [systemctl, enable, etcd-proxy-static.service]
+          - [systemctl, start, etcd-proxy-static.service]
+          - [systemctl, status, etcd-proxy-static.service]
+          - [systemctl, enable, etcd.service]
           - [/etc/etcd_waiting]
-          - [ curl, -XPUT, {get_param: create_discovery}, -d, {get_param: value_etcd_size} ]
-          - systemctl start etcd.service
-          - systemctl status etcd.service
+          - [curl, -XPUT, {get_param: create_discovery}, -d, {get_param: value_etcd_size} ]
+          - [systemctl, start, etcd.service]
+          - [systemctl, status, etcd.service]
         users:
           - default
           - name: etcd

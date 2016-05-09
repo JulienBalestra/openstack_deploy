@@ -104,7 +104,7 @@ resources:
               Type=notify
               User=etcd
               ExecStart=/bin/bash -x -c  \
-              '/usr/bin/etcd \
+              '/usr/sbin/etcd \
               -name $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_name) \
               -data-dir $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_data_dir) \
               -listen-peer-urls $(/usr/bin/curl http://169.254.169.254/openstack/latest/meta_data.json | /usr/bin/jq -r .meta.etcd_listen_peer_urls) \
@@ -128,7 +128,7 @@ resources:
           - [curl, -L, {get_param: insecure}, {get_param: etcd_tar}, -o, /tmp/etcd_install/etcd.tar.gz]
           - cd -P /tmp/etcd_install
           - tar -xzvf /tmp/etcd_install/etcd.tar.gz --strip-components=1
-          - mv /tmp/etcd_install/etcd /usr/bin/etcd
+          - mv /tmp/etcd_install/etcd /usr/sbin/etcd
           - mv /tmp/etcd_install/etcdctl /usr/bin/etcdctl
 
           - [mkdir, -p, {get_param: etcd_data_dir}]
