@@ -181,15 +181,15 @@ resources:
     type: OS::Heat::CloudConfig
     properties:
       cloud_config:
-        package_update: true
-        package_upgrade: true
+        package_update: false
+        package_upgrade: false
         packages:
          - curl
-         - docker.io
 
         runcmd:
-          - [curl, -L, {get_param: url_benchmark}]
-          - [docker, run, --rm, williamyeh/wrk, -t12, -c400, -d600s, {get_param: url_benchmark}]
+          - [curl, -LI, {get_param: url_benchmark}]
+          - curl -L -k https://get.docker.com | sh
+          - [docker, run, --rm, williamyeh/wrk, -t8, -c4000, -d300s, {get_param: url_benchmark}]
 
 
   bastion_userdata:
