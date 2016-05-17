@@ -196,8 +196,10 @@ resources:
     type: OS::Heat::CloudConfig
     properties:
       cloud_config:
-        runcmd:
-          - [ echo, "hello_world" ]
+        package_update: true
+        package_upgrade: true
+        packages:
+          - curl
 
 parameters:
   url_benchmark:
