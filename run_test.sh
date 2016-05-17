@@ -35,14 +35,16 @@ function run_tests
     fi
     echo "ERROR MUST FOLLOW"
     bash invalid_stack_integrity.sh
+
+    echo "ERROR MUST ABOVE"
     if [ $? -eq 0 ]
     then
         exit 5
     fi
 
-    cd ${ROOT}
+    cd ${ROOT_DIR}
 
-    for i in etcd etcd_client fast_instance jenkins etcd_standalone coreos_ramdisk
+    for i in etcd etcd_client fast_instance jenkins etcd_standalone coreos_ramdisk http_benchmark
     do
         $(pwd)/heat/${i}/integrity.sh
         if [ $? -ne 0 ]
@@ -55,7 +57,7 @@ function run_tests
 function main
 {
     go_to_dirname
-    ROOT=$(pwd)
+    export ROOT_DIR=$(pwd)
     export PATH=${PATH}:"$(pwd)/script/heat_tools/"
     run_tests
 }
