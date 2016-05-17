@@ -67,7 +67,7 @@ resources:
       router_id: { get_resource: router }
       subnet_id: { get_resource: subnet }
 
-  toscale_securitygroup:
+  bench_securitygroup:
       depends_on: [ random ]
       type: OS::Neutron::SecurityGroup
       properties:
@@ -76,7 +76,7 @@ resources:
             template: ctx%ress%-rand%
             params:
               "ctx%": {get_param: context}
-              "ress%": "toscale"
+              "ress%": "bench"
               "rand%": { get_attr: [random, value] }
         rules:
           - remote_ip_prefix: {get_param: subnet_cidr}
@@ -133,8 +133,8 @@ resources:
                 "ress%": "bastion"
                 "rand%": { get_attr: [random, value] }
 
-  toscale_group:
-    depends_on: [ interface, toscale_securitygroup, toscale_userdata ]
+  bench_group:
+    depends_on: [ interface, bench_securitygroup, bench_userdata ]
     type: OS::Heat::AutoScalingGroup
     properties:
       min_size: 1
@@ -145,10 +145,10 @@ resources:
         type: "lib::FIPInstance"
         properties:
           key_name: { get_param: key_name }
-          security_group: { get_resource: toscale_securitygroup }
+          security_group: { get_resource: bench_securitygroup }
           network: { get_resource: network }
           subnet: { get_resource: subnet }
-          userdata: { get_resource: toscale_userdata }
+          userdata: { get_resource: bench_userdata }
           flavor: { get_param: flavor }
           image: { get_param: image }
           floatingip_network_name: { get_param: floatingip_network_name }
@@ -158,27 +158,27 @@ resources:
              params:
                "ctx%": {get_param: context}
                "rand%": { get_attr: [random, value] }
-               "ress%": "toscale"
+               "ress%": "bench"
 
   scale_up:
-    depends_on: [ toscale_group ]
+    depends_on: [ bench_group ]
     type: OS::Heat::ScalingPolicy
     properties:
       adjustment_type: change_in_capacity
-      auto_scaling_group_id: {get_resource: toscale_group}
+      auto_scaling_group_id: {get_resource: bench_group}
       cooldown: 30
       scaling_adjustment: 2
 
   scale_down:
-    depends_on: [ toscale_group ]
+    depends_on: [ bench_group ]
     type: OS::Heat::ScalingPolicy
     properties:
       adjustment_type: change_in_capacity
-      auto_scaling_group_id: {get_resource: toscale_group}
+      auto_scaling_group_id: {get_resource: bench_group}
       cooldown: 30
       scaling_adjustment: -2
 
-  toscale_userdata:
+  bench_userdata:
     type: OS::Heat::CloudConfig
     properties:
       cloud_config:
