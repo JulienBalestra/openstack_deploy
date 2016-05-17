@@ -48,7 +48,6 @@ resources:
 
   router:
     type: OS::Neutron::Router
-    depends_on: [ subnet ]
     properties:
       name:
         str_replace:
@@ -62,7 +61,7 @@ resources:
 
   interface:
     type: OS::Neutron::RouterInterface
-    depends_on: [ router ]
+    depends_on: [ router, subnet ]
     properties:
       router_id: { get_resource: router }
       subnet_id: { get_resource: subnet }
