@@ -85,11 +85,6 @@ resources:
             port_range_max: 22
             direction: ingress
           - remote_ip_prefix: {get_param: subnet_cidr}
-            protocol: tcp
-            port_range_min: 80
-            port_range_max: 80
-            direction: ingress
-          - remote_ip_prefix: {get_param: subnet_cidr}
             protocol: icmp
             direction: ingress
 
@@ -208,8 +203,6 @@ resources:
 parameters:
   url_benchmark:
     type: string
-    label: The debian image based for Instances
-    description: image=debian-8-2016-01-01
 
   context:
     type: string
