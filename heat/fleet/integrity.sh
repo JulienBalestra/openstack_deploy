@@ -17,14 +17,18 @@ go_to_dirname
 
 ../../scripts/heat_tools/stack_integrity.py \
 -v True \
--f fleet.yaml \
--r registry.yaml \
+-f base.yaml \
 -P  "context" \
-    "image" \
-    "flavor" \
-    "dns_nameservers" \
-    "key_name" \
-    "bastion_size" \
-    "etcd_tar"\
-    "vulcand_tar" \
     "floatingip_network_name"
+
+../../scripts/heat_tools/stack_integrity.py \
+-v True \
+-f generate_fleet_instance.yaml \
+-r registry.yaml \
+-P key_name \
+ floatingip_network_name \
+ flavor \
+ image \
+ dns_nameservers \
+ etcd_tar \
+ fleet_tar

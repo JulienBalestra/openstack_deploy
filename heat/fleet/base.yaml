@@ -1,0 +1,36 @@
+heat_template_version: 2014-10-16
+
+description: >
+  First stage
+
+resources:
+  random:
+    type: OS::Heat::RandomString
+    properties:
+      length: 6
+      sequence: lettersdigits
+
+  router:
+    type: OS::Neutron::Router
+    depends_on: [ random ]
+    properties:
+      admin_state_up: True
+      external_gateway_info: {"network": {get_param: floatingip_network_name}}
+
+
+parameters:
+  floatingip_network_name:
+    type: string
+    label: The Floating IP network for NAT
+    description: floatingip_network_name=public
+
+
+outputs:
+  router:
+    value:
+      - { get_resource: router }
+
+  base_name:
+    description: Random value used to tag stack resources
+    value:
+      - { get_attr: [random, value] }
