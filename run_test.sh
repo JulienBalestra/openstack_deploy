@@ -35,9 +35,11 @@ function run_tests
     fi
     echo "ERROR MUST FOLLOW"
     bash invalid_stack_integrity.sh
+    RET=?$
 
     echo "ERROR MUST ABOVE"
-    if [ $? -eq 0 ]
+
+    if [ ${RET} -eq 0 ]
     then
         exit 5
     fi
