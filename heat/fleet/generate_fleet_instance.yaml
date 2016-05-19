@@ -108,7 +108,7 @@ resources:
     properties:
       cloud_config:
         package_update: true
-        package_upgrade: true
+        package_upgrade: false
         packages:
          - curl
          - jq
@@ -116,13 +116,79 @@ resources:
          - wget
          - which
 
+        users:
+          - default
+          - name: etcd
+            groups:
+              - etcd
+          - name: fleet
+            groups:
+              - fleet
+
+        write_files:
+          - path: /etc/systemd/system/etcd2.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=Etcd2 server
+
+              [Service]
+              SyslogIdentifier=%p
+              User=etcd
+              ExecStart=/usr/bin/etcd2
+              Type=notify
+              Restart=always
+              RestartSec=30s
+
+              [Install]
+              WantedBy=multi-user.target
+
+          - path: /etc/systemd/system/fleet.socket
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=Fleet API Socket
+
+              PartOf=fleet.service
+
+              [Socket]
+              ListenStream=/var/run/fleet.sock
+              SocketMode=0660
+              SocketUser=fleet
+              SocketGroup=fleet
+
+              [Install]
+              WantedBy=multi-user.target
+
+          - path: /etc/systemd/system/fleet.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=Fleet daemon
+
+              After=etcd2.service
+
+              Wants=fleet.socket
+              After=fleet.socket
+
+              [Service]
+              Environment=GOMAXPROCS=1
+              ExecStart=/usr/bin/fleetd
+              Restart=always
+              RestartSec=30s
+
+              [Install]
+              WantedBy=multi-user.target
+
         runcmd:
+          - set -x
           - mkdir -v /tmp/etcd_install || rm -Rf /tmp/etcd_install/*
           - [curl, -L, {get_param: insecure}, {get_param: etcd_tar}, -o, /tmp/etcd_install/etcd.tar.gz]
           - [cd, -P, /tmp/etcd_install]
           - [tar, -xzvf, /tmp/etcd_install/etcd.tar.gz, --strip-components=1]
           - [mv, /tmp/etcd_install/etcd, /usr/bin/etcd]
           - [mv, /tmp/etcd_install/etcdctl, /usr/bin/etcdctl]
+          - mkdir -p /var/lib/etcd2 && chown -R etcd:etcd /var/lib/etcd2
           - etcd --version
           - etcdctl --version
 
@@ -134,6 +200,18 @@ resources:
           - [mv, /tmp/fleet_install/fleetctl, /usr/bin/fleetctl]
           - fleetd --version
           - fleetctl --version
+
+          - [curl, -L, {get_param: insecure}, {get_param: confd_bin}, -o, /usr/bin/confd]
+          - [chmod, +x, /usr/bin/confd]
+          - /usr/bin/confd --version
+
+          - cd /etc/systemd/system
+          - systemctl daemon-reload
+          - ls -l
+          - systemctl enable etcd2.service
+          - systemctl enable fleet.socket
+          - systemctl enable fleet.service
+
         final_message: "The system is finally up, after $UPTIME seconds"
 
 parameters:
@@ -187,6 +265,10 @@ parameters:
     description: "https://github.com/coreos/etcd/releases/version/arch.tar.gz"
 
   fleet_tar:
+    type: string
+    description: "https://github.com/coreos/fleet/releases/version/arch.tar.gz"
+
+  confd_bin:
     type: string
     description: "https://github.com/coreos/fleet/releases/version/arch.tar.gz"
 
