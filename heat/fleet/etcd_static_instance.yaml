@@ -38,9 +38,6 @@ resources:
             template: static__index__
             params:
               __index__: { get_param: index }
-
-        etcd_data_dir: { get_param: etcd_data_dir }
-
         etcd_initial_cluster_token: { get_param: etcd_initial_cluster_token }
         etcd_initial_cluster: { get_param: etcd_initial_cluster }
         etcd_initial_cluster_state: { get_param: etcd_initial_cluster_state }
@@ -49,6 +46,9 @@ resources:
     type: OS::Heat::CloudConfig
     properties:
       cloud_config:
+        preserve_hostname: false
+        manage_etc_hosts: true
+
         write_files:
           - path: /etc/etcd2-environment
             permissions: 0644
@@ -73,7 +73,6 @@ resources:
               ETCD_INITIAL_ADVERTISE_PEER_URLS="http://${DEFAULT_IPV4}:2380"
               ETCD_LISTEN_CLIENT_URLS="http://0.0.0.0:2379,http://0.0.0.0:4001"
               ETCD_LISTEN_PEER_URLS="http://${DEFAULT_IPV4}:2380,http://${DEFAULT_IPV4}:7001"
-              ETCD_DATA_DIR=/var/lib/etcd2
               ETCD_NAME=$(curl http://169.254.169.254/openstack/latest/meta_data.json | jq -r .meta.etcd_name)
               EOF
 
@@ -107,7 +106,7 @@ resources:
           - set -x
           - chown etcd:etcd /etc/etcd2-environment
 
-          - systemctl daemon reload
+          - systemctl daemon-reload
           - systemctl enable setup-etcd2-environment.service
           - systemctl enable etcd2.service
           - systemctl enable fleet.socket
@@ -137,10 +136,6 @@ parameters:
     type: string
   index:
     type: number
-
-  etcd_data_dir:
-    type: string
-    default: "/var/lib/etcd2"
 
   etcd_initial_cluster_token:
     type: string
