@@ -1,0 +1,159 @@
+heat_template_version: 2014-10-16
+
+description: >
+  Instance with UserData
+
+resources:
+  port:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_param: network }
+      fixed_ips:
+        - subnet_id: { get_param: subnet }
+          ip_address:
+            str_replace:
+              template: prefix%index%
+              params:
+                "prefix%": { get_param: prefix }
+                "index%":  { get_param: index }
+      security_groups: [ { get_param: security_group } ]
+
+  instance:
+    depends_on: [ port, userdata ]
+    type: OS::Nova::Server
+    properties:
+      key_name: { get_param: key_name }
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      networks:
+        - port: { get_resource: port }
+      user_data_format: RAW
+      user_data: { get_resource: userdata }
+      scheduler_hints:
+        group: { get_param: anti_affinity }
+
+      metadata:
+        etcd_name:
+          str_replace:
+            template: static__index__
+            params:
+              __index__: { get_param: index }
+
+        etcd_data_dir: { get_param: etcd_data_dir }
+
+        etcd_initial_cluster_token: { get_param: etcd_initial_cluster_token }
+        etcd_initial_cluster: { get_param: etcd_initial_cluster }
+        etcd_initial_cluster_state: { get_param: etcd_initial_cluster_state }
+
+  userdata:
+    type: OS::Heat::CloudConfig
+    properties:
+      cloud_config:
+        write_files:
+          - path: /etc/etcd2-environment
+            permissions: 0644
+
+          - path: /opt/bin/setup-etcd2-environment
+            permissions: 0755
+            content: |
+              #!/usr/bin/env bash
+
+              set -e ; set -o pipefail
+
+              DEFAULT_IPV4=$(curl 169.254.169.254/1.0/meta-data/local-ipv4)
+
+              cat << EOF | tee /etc/etcd2-environment
+              ETCD_INITIAL_CLUSTER_TOKEN="$(curl http://169.254.169.254/openstack/latest/meta_data.json |
+                jq -r .meta.etcd_initial_cluster_token)"
+              ETCD_INITIAL_CLUSTER="$(curl http://169.254.169.254/openstack/latest/meta_data.json |
+                jq -r .meta.etcd_initial_cluster)"
+              ETCD_INITIAL_CLUSTER_STATE="$(curl http://169.254.169.254/openstack/latest/meta_data.json |
+                jq -r .meta.etcd_initial_cluster_state)"
+              ETCD_ADVERTISE_CLIENT_URLS="http://${DEFAULT_IPV4}:2379"
+              ETCD_INITIAL_ADVERTISE_PEER_URLS="http://${DEFAULT_IPV4}:2380"
+              ETCD_LISTEN_CLIENT_URLS="http://0.0.0.0:2379,http://0.0.0.0:4001"
+              ETCD_LISTEN_PEER_URLS="http://${DEFAULT_IPV4}:2380,http://${DEFAULT_IPV4}:7001"
+              ETCD_DATA_DIR=/var/lib/etcd2
+              ETCD_NAME=$(curl http://169.254.169.254/openstack/latest/meta_data.json | jq -r .meta.etcd_name)
+              EOF
+
+          - path: /etc/systemd/system/setup-etcd2-environment.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=Setup etcd2 environment
+
+              After=network.target
+
+              [Service]
+              SyslogIdentifier=%p
+              User=etcd
+              ExecStart=/opt/bin/setup-etcd2-environment
+              RemainAfterExit=yes
+              Type=oneshot
+
+          - path: /etc/systemd/system/etcd2.service.d/10-env-file.conf
+            permissions: 0644
+            content: |
+              [Unit]
+              Requires=setup-etcd2-environment.service
+              After=setup-etcd2-environment.service
+
+              [Service]
+              SyslogIdentifier=%p
+              EnvironmentFile=/etc/etcd2-environment
+
+        runcmd:
+          - set -x
+          - chown etcd:etcd /etc/etcd2-environment
+
+          - systemctl daemon reload
+          - systemctl enable setup-etcd2-environment.service
+          - systemctl enable etcd2.service
+          - systemctl enable fleet.socket
+          - systemctl enable fleet.service
+          - systemctl start setup-etcd2-environment.service
+          - systemctl start etcd2.service
+          - systemctl start fleet.service
+
+        final_message: "The system is finally up, after $UPTIME seconds"
+
+parameters:
+  key_name:
+    type: string
+  security_group:
+    type: string
+  network:
+    type: string
+  subnet:
+    type: string
+  image:
+    type: string
+  flavor:
+    type: string
+  prefix:
+    type: string
+  anti_affinity:
+    type: string
+  index:
+    type: number
+
+  etcd_data_dir:
+    type: string
+    default: "/var/lib/etcd2"
+
+  etcd_initial_cluster_token:
+    type: string
+
+  etcd_initial_cluster:
+    type: string
+
+  etcd_initial_cluster_state:
+    type: string
+    default: "new"
+
+
+outputs:
+  ip:
+    value:
+      - {get_attr: [instance, first_address]}

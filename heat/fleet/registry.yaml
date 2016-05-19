@@ -1,6 +1,4 @@
 resource_registry:
-  "lib::BaseInstance": ../lib/base_instance.yaml
+  "FleetInstance": fleet_instance.yaml
+  "EtcdStaticInstance": etcd_static_instance.yaml
   "lib::FIPInstance": ../lib/fip_instance.yaml
-  "EtcdStatic": etcd_static.yaml
-  "VulcandProxy": etcd_vulcand_proxy.yaml
-  "EtcdDiscovery": etcd_discovery.yaml
