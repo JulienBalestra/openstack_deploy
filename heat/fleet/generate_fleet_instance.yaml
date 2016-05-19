@@ -107,6 +107,8 @@ resources:
     type: OS::Heat::CloudConfig
     properties:
       cloud_config:
+        preserve_hostname: false
+        manage_etc_hosts: true
         package_update: true
         package_upgrade: true
         packages:
@@ -219,9 +221,9 @@ resources:
           - [chmod, +x, /usr/bin/confd]
           - /usr/bin/confd --version
 
-          - cd /etc/systemd/system
           - systemctl daemon-reload
-          - ls -la
+          - rm -v /etc/machine-id ; rm -v /var/lib/dbus/machine-id
+          - touch /etc/machine-id ; touch /var/lib/dbus/machine-id
 
         final_message: "The system is finally up, after $UPTIME seconds. Shutting down for image building"
         power_state:
