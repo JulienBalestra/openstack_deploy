@@ -130,15 +130,20 @@ resources:
             permissions: 0644
             content: |
               [Unit]
-              Description=Etcd2 server
+              Description=Etcd2
+              Conflicts=etcd.service
 
               [Service]
               SyslogIdentifier=%p
               User=etcd
+              Environment=ETCD_DATA_DIR=/var/lib/etcd2
+              Environment=ETCD_NAME=%m
               ExecStart=/usr/bin/etcd2
               Type=notify
               Restart=always
-              RestartSec=30s
+              RestartSec=10s
+              LimitNOFILE=40000
+              TimeoutStartSec=0
 
               [Install]
               WantedBy=multi-user.target
@@ -208,9 +213,6 @@ resources:
           - cd /etc/systemd/system
           - systemctl daemon-reload
           - ls -l
-          - systemctl enable etcd2.service
-          - systemctl enable fleet.socket
-          - systemctl enable fleet.service
 
         final_message: "The system is finally up, after $UPTIME seconds"
 
