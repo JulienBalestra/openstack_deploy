@@ -114,14 +114,21 @@ resources:
          - jq
          - git
          - wget
-         - which
 
         users:
-          - default
+          - name: cloud
+            groups: sudo
+            sudo: ['ALL=(ALL) NOPASSWD:ALL']
+            shell: /bin/bash
+            ssh_authorized_keys: { get_param: ssh_authorized_keys }
+
           - name: etcd
+            shell: /usr/sbin/nologin
             groups:
               - etcd
+
           - name: fleet
+            shell: /usr/sbin/nologin
             groups:
               - fleet
 
@@ -138,7 +145,7 @@ resources:
               User=etcd
               Environment=ETCD_DATA_DIR=/var/lib/etcd2
               Environment=ETCD_NAME=%m
-              ExecStart=/usr/bin/etcd2
+              ExecStart=/usr/bin/etcd
               Type=notify
               Restart=always
               RestartSec=10s
@@ -196,6 +203,7 @@ resources:
           - mkdir -p /var/lib/etcd2 && chown -R etcd:etcd /var/lib/etcd2
           - etcd --version
           - etcdctl --version
+          - rm -Rf /tmp/etcd_install
 
           - mkdir -v /tmp/fleet_install || rm -Rf /tmp/fleet_install/*
           - [curl, -L, {get_param: insecure}, {get_param: fleet_tar}, -o, /tmp/fleet_install/fleet.tar.gz]
@@ -205,6 +213,7 @@ resources:
           - [mv, /tmp/fleet_install/fleetctl, /usr/bin/fleetctl]
           - fleetd --version
           - fleetctl --version
+          - rm -Rf /tmp/fleet_install
 
           - [curl, -L, {get_param: insecure}, {get_param: confd_bin}, -o, /usr/bin/confd]
           - [chmod, +x, /usr/bin/confd]
@@ -212,9 +221,13 @@ resources:
 
           - cd /etc/systemd/system
           - systemctl daemon-reload
-          - ls -l
+          - ls -la
 
-        final_message: "The system is finally up, after $UPTIME seconds"
+        final_message: "The system is finally up, after $UPTIME seconds. Shutting down for image building"
+        power_state:
+          delay: 15
+          mode: poweroff
+          message: Shutdown for snapshot
 
 parameters:
   context:
@@ -273,6 +286,10 @@ parameters:
   confd_bin:
     type: string
     description: "https://github.com/coreos/fleet/releases/version/arch.tar.gz"
+
+  ssh_authorized_keys:
+    type: comma_delimited_list
+    label: ssh publics keys
 
 outputs:
   base_name:
