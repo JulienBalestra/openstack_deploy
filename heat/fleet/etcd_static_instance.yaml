@@ -61,16 +61,17 @@ resources:
 
               cat << EOF | tee /etc/etcd2-environment
               ETCD_INITIAL_CLUSTER_TOKEN="$(curl http://169.254.169.254/openstack/latest/meta_data.json |
-                jq -r .meta.etcd_initial_cluster_token)"
+                jq -r -e .meta.etcd_initial_cluster_token)"
               ETCD_INITIAL_CLUSTER="$(curl http://169.254.169.254/openstack/latest/meta_data.json |
-                jq -r .meta.etcd_initial_cluster)"
+                jq -r -e .meta.etcd_initial_cluster)"
               ETCD_INITIAL_CLUSTER_STATE="$(curl http://169.254.169.254/openstack/latest/meta_data.json |
-                jq -r .meta.etcd_initial_cluster_state)"
+                jq -r -e .meta.etcd_initial_cluster_state)"
               ETCD_ADVERTISE_CLIENT_URLS="http://${DEFAULT_IPV4}:2379"
               ETCD_INITIAL_ADVERTISE_PEER_URLS="http://${DEFAULT_IPV4}:2380"
               ETCD_LISTEN_CLIENT_URLS="http://0.0.0.0:2379,http://0.0.0.0:4001"
               ETCD_LISTEN_PEER_URLS="http://${DEFAULT_IPV4}:2380,http://${DEFAULT_IPV4}:7001"
-              ETCD_NAME=$(curl http://169.254.169.254/openstack/latest/meta_data.json | jq -r .meta.etcd_name)
+              ETCD_NAME=$(curl http://169.254.169.254/openstack/latest/meta_data.json |
+                jq -r -e .meta.etcd_name)
               EOF
 
           - path: /etc/systemd/system/fleet.service.d/10-metadata.conf

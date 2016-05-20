@@ -76,6 +76,7 @@ resources:
           flavor: { get_param: flavor }
           image: { get_param: image }
           etcd_initial_cluster: { get_param: etcd_initial_cluster }
+          fleet_state: "stateless"
 
   scale_up:
     depends_on: [ stateless_group ]

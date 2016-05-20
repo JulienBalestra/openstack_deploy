@@ -46,6 +46,7 @@ resources:
 
       metadata:
         etcd_initial_cluster: { get_param: etcd_initial_cluster }
+        fleet_state: { get_param: fleet_state }
 
   userdata:
     type: OS::Heat::CloudConfig
@@ -67,17 +68,24 @@ resources:
               cat << EOF | tee /etc/etcd2-environment
               ETCD_PROXY="on"
               ETCD_INITIAL_CLUSTER="$(curl http://169.254.169.254/openstack/latest/meta_data.json |
-                jq -r .meta.etcd_initial_cluster)"
+                jq -r -e .meta.etcd_initial_cluster)"
               ETCD_ADVERTISE_CLIENT_URLS="http://${DEFAULT_IPV4}:2379"
               ETCD_LISTEN_CLIENT_URLS="http://0.0.0.0:2379,http://0.0.0.0:4001"
               ETCD_LISTEN_PEER_URLS="http://${DEFAULT_IPV4}:2380,http://${DEFAULT_IPV4}:7001"
               EOF
 
-          - path: /etc/systemd/system/fleet.service.d/10-metadata.conf
-            permissions: 0644
+          - path: /opt/bin/setup-fleet-environment
+            permissions: 0755
             content: |
-              [Service]
-              Environment="FLEET_METADATA=role=worker"
+              #!/usr/bin/env bash
+
+              set -e ; set -o pipefail
+
+              cat << EOF | tee /etc/fleet-environment
+              FLEET_METADATA="state=$(curl http://169.254.169.254/openstack/latest/meta_data.json |
+                jq -r -e .meta.fleet_state),\
+                role=worker"
+              EOF
 
         runcmd:
           - set -x
@@ -123,6 +131,9 @@ parameters:
     type: string
 
   instance_basename:
+    type: string
+
+  fleet_state:
     type: string
 
   etcd_initial_cluster:
