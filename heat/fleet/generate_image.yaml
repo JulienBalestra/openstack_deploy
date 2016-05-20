@@ -116,6 +116,7 @@ resources:
          - jq
          - git
          - wget
+         - docker.io
 
         users:
           - name: cloud
@@ -134,7 +135,78 @@ resources:
             groups:
               - fleet
 
+          - name: rkt
+            shell: /usr/sbin/nologin
+            groups:
+              - rkt
+
         write_files:
+          - path: /etc/etcd2-environment
+            permissions: 0644
+
+          - path: /etc/fleet-environment
+            permissions: 0644
+
+          - path: /opt/bin/setup-etcd2-environment
+            permissions: 0755
+            content: |
+              #!/usr/bin/env bash
+
+              set -e ; set -o pipefail
+
+              DEFAULT_IPV4=$(curl 169.254.169.254/1.0/meta-data/local-ipv4)
+
+              cat << EOF | tee /etc/etcd2-environment
+              # ETCD_FLAG=value
+              EOF
+
+          - path: /opt/bin/setup-fleet-environment
+            permissions: 0755
+            content: |
+              #!/usr/bin/env bash
+
+              set -e ; set -o pipefail
+
+              cat << EOF | tee /etc/fleet-environment
+              # FLEET_METADATA="key=value"
+              EOF
+
+          - path: /etc/systemd/system/setup-etcd2-environment.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=Setup etcd2 environment
+
+              After=network.target
+
+              [Service]
+              SyslogIdentifier=%p
+              User=etcd
+              ExecStart=/opt/bin/setup-etcd2-environment
+              RemainAfterExit=yes
+              Type=oneshot
+
+              [Install]
+              WantedBy=multi-user.target
+
+          - path: /etc/systemd/system/setup-fleet-environment.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=Setup fleet environment
+
+              After=network.target
+
+              [Service]
+              SyslogIdentifier=%p
+              User=fleet
+              ExecStart=/opt/bin/setup-fleet-environment
+              RemainAfterExit=yes
+              Type=oneshot
+
+              [Install]
+              WantedBy=multi-user.target
+
           - path: /etc/systemd/system/etcd2.service
             permissions: 0644
             content: |
@@ -142,11 +214,15 @@ resources:
               Description=Etcd2
               Conflicts=etcd.service
 
+              Requires=setup-etcd2-environment.service
+              After=setup-etcd2-environment.service
+
               [Service]
               SyslogIdentifier=%p
               User=etcd
               Environment=ETCD_DATA_DIR=/var/lib/etcd2
               Environment=ETCD_NAME=%m
+              EnvironmentFile=/etc/etcd2-environment
               ExecStart=/usr/bin/etcd
               Type=notify
               Restart=always
@@ -182,21 +258,30 @@ resources:
 
               After=etcd2.service
 
+              Requires=setup-fleet-environment.service
+              After=setup-fleet-environment.service
+
               Wants=fleet.socket
               After=fleet.socket
 
               [Service]
               Environment=GOMAXPROCS=1
+              EnvironmentFile=/etc/fleet-environment
               ExecStart=/usr/bin/fleetd
               Restart=always
-              RestartSec=30s
+              RestartSec=15s
 
               [Install]
               WantedBy=multi-user.target
 
         runcmd:
           - set -x
-          - mkdir -v /tmp/etcd_install || rm -Rf /tmp/etcd_install/*
+          - set -e
+
+          - chown etcd:etcd /etc/etcd2-environment
+          - chown fleet:fleet /etc/fleet-environment
+
+          - mkdir -v /tmp/etcd_install
           - [curl, -L, {get_param: insecure}, {get_param: etcd_tar}, -o, /tmp/etcd_install/etcd.tar.gz]
           - [cd, -P, /tmp/etcd_install]
           - [tar, -xzvf, /tmp/etcd_install/etcd.tar.gz, --strip-components=1]
@@ -207,7 +292,7 @@ resources:
           - etcdctl --version
           - rm -Rf /tmp/etcd_install
 
-          - mkdir -v /tmp/fleet_install || rm -Rf /tmp/fleet_install/*
+          - mkdir -v /tmp/fleet_install
           - [curl, -L, {get_param: insecure}, {get_param: fleet_tar}, -o, /tmp/fleet_install/fleet.tar.gz]
           - [cd, -P, /tmp/fleet_install]
           - [tar, -xzvf, /tmp/fleet_install/fleet.tar.gz, --strip-components=1]
@@ -217,52 +302,94 @@ resources:
           - fleetctl --version
           - rm -Rf /tmp/fleet_install
 
+          - mkdir -v /tmp/rkt_install
+          - [curl, -L, {get_param: insecure}, {get_param: rkt_tar}, -o, /tmp/rkt_install/rkt.tar.gz]
+          - [cd, -P, /tmp/rkt_install]
+          - [tar, -xzvf, /tmp/rkt_install/rkt.tar.gz, --strip-components=1]
+          - [mv, /tmp/rkt_install/rkt, /usr/bin/rkt]
+          - [mv, /tmp/rkt_install/init/systemd/rkt-metadata.service, /etc/systemd/system/rkt-metadata.service]
+          - [mv, /tmp/rkt_install/init/systemd/rkt-metadata.socket, /etc/systemd/system/rkt-metadata.socket]
+          - [mv, /tmp/rkt_install/init/systemd/rkt-gc.timer, /etc/systemd/system/rkt-gc.timer]
+          - [mv, /tmp/rkt_install/init/systemd/rkt-gc.service, /etc/systemd/system/rkt-gc.service]
+          - rkt version
+          - rm -Rf /tmp/rkt_install
+
           - [curl, -L, {get_param: insecure}, {get_param: confd_bin}, -o, /usr/bin/confd]
           - [chmod, +x, /usr/bin/confd]
           - /usr/bin/confd --version
 
           - systemctl daemon-reload
+          - systemctl enable rkt-metadata.service
+          - systemctl enable rkt-metadata.service
+          - systemctl enable rkt-metadata.socket
+          - systemctl enable rkt-gc.timer
+
           - rm -v /etc/machine-id ; rm -v /var/lib/dbus/machine-id
           - touch /etc/machine-id ; touch /var/lib/dbus/machine-id
 
         final_message: "The system is finally up, after $UPTIME seconds. Shutting down for image building"
         power_state:
-          delay: 15
+          delay: "+1"
+          timeout: 60
           mode: poweroff
           message: Shutdown for snapshot
+          condition: True
 
 parameters:
   context:
     type: string
     default: ""
+
   key_name:
     type: string
     label: Name of keypair to assign to servers
     description: key_name=foo
+    constraints:
+      - custom_constraint: nova.keypair
+
   subnet_cidr:
     type: string
     default: "192.168.1.0/24"
+    constraints:
+      - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}/[0-9]{1,2}"
+        description: Must be a CIDR like 192.168.1.0/24
+
   subnet_start:
     type: string
     default: "192.168.1.100"
+    constraints:
+      - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}"
+        description: Must be a valid IP address like 192.168.1.200
+
   subnet_end:
     type: string
     default: "192.168.1.200"
+    constraints:
+      - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}"
+        description: Must be a valid IP address like 192.168.1.200
+
   gateway_ip:
     type: string
     default: "192.168.1.254"
+    constraints:
+      - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}"
+        description: Must be a valid IP address like 192.168.1.200
+
   dns_nameservers:
     type: comma_delimited_list
     label: DNS nameservers
     description: dns_nameservers=8.8.8.8,8.8.4.4
+
   floatingip_network_name:
     type: string
     label: The Floating IP network for NAT
     description: floatingip_network_name=public
+
   flavor:
     type: string
     label: The flavor for Instances
     description: flavor=m1.medium
+
   image:
     type: string
     label: The debian image based for Instances
@@ -271,6 +398,9 @@ parameters:
   where_are_you:
     type: string
     default: "0.0.0.0/0"
+    constraints:
+      - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}/[0-9]{1,2}"
+        description: Must be a CIDR like 192.168.1.0/24
 
   insecure:
     type: string
@@ -285,6 +415,10 @@ parameters:
     type: string
     description: "https://github.com/coreos/fleet/releases/version/arch.tar.gz"
 
+  rkt_tar:
+    type: string
+    description: "https://github.com/coreos/rkt/releases/version/arch.tar.gz"
+
   confd_bin:
     type: string
     description: "https://github.com/coreos/fleet/releases/version/arch.tar.gz"
@@ -292,9 +426,3 @@ parameters:
   ssh_authorized_keys:
     type: comma_delimited_list
     label: ssh publics keys
-
-outputs:
-  base_name:
-    description: Random value used to tag stack resources
-    value:
-      - { get_attr: [random, value] }

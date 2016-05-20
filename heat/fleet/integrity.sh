@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -e
+
 function go_to_dirname
 {
     echo "Go to working directory..."
@@ -23,7 +25,7 @@ go_to_dirname
 
 ../../scripts/heat_tools/stack_integrity.py \
 -v True \
--f generate_fleet_instance.yaml \
+-f generate_image.yaml \
 -r registry.yaml \
 -P key_name \
  floatingip_network_name \
@@ -31,4 +33,30 @@ go_to_dirname
  image \
  dns_nameservers \
  etcd_tar \
- fleet_tar
+ fleet_tar \
+ confd_bin \
+ rkt_tar \
+ ssh_authorized_keys
+
+../../scripts/heat_tools/stack_integrity.py \
+-v True \
+-f etcd_static.yaml \
+-r registry.yaml \
+-P key_name \
+ flavor \
+ image \
+ dns_nameservers \
+ router
+
+
+../../scripts/heat_tools/stack_integrity.py \
+-v True \
+-f fleet_stateless.yaml \
+-r registry.yaml \
+-P key_name \
+ flavor \
+ image \
+ dns_nameservers \
+ router \
+ etcd_initial_cluster
+

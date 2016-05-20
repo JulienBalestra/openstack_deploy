@@ -1,46 +1,51 @@
 heat_template_version: 2014-10-16
 
 description: >
-  Etcd2 instance for static bootstrap
+  Fleet instance with role=worker
 
 resources:
+  random:
+    type: OS::Heat::RandomString
+    properties:
+      length: 10
+      sequence: lettersdigits
+
   port:
+    depends_on: [ random ]
     type: OS::Neutron::Port
     properties:
+      name:
+        str_replace:
+          template: bn%-rand%
+          params:
+            "bn%": { get_param: instance_basename }
+            "rand%": { get_attr: [random, value] }
       network_id: { get_param: network }
-      fixed_ips:
-        - subnet_id: { get_param: subnet }
-          ip_address:
-            str_replace:
-              template: prefix%index%
-              params:
-                "prefix%": { get_param: prefix }
-                "index%":  { get_param: index }
+      fixed_ips: [{ "subnet_id": { get_param: subnet } }]
       security_groups: [ { get_param: security_group } ]
 
   instance:
-    depends_on: [ port, userdata ]
+    depends_on: [ port ]
     type: OS::Nova::Server
     properties:
+      name:
+        str_replace:
+          template: bn%-rand%
+          params:
+            "bn%": { get_param: instance_basename }
+            "rand%": { get_attr: [random, value] }
+      user_data_format: RAW
+      user_data: { get_resource: userdata }
       key_name: { get_param: key_name }
       image: { get_param: image }
       flavor: { get_param: flavor }
       networks:
         - port: { get_resource: port }
-      user_data_format: RAW
-      user_data: { get_resource: userdata }
       scheduler_hints:
         group: { get_param: anti_affinity }
 
       metadata:
-        etcd_name:
-          str_replace:
-            template: static__index__
-            params:
-              __index__: { get_param: index }
-        etcd_initial_cluster_token: { get_param: etcd_initial_cluster_token }
         etcd_initial_cluster: { get_param: etcd_initial_cluster }
-        etcd_initial_cluster_state: { get_param: etcd_initial_cluster_state }
 
   userdata:
     type: OS::Heat::CloudConfig
@@ -60,24 +65,19 @@ resources:
               DEFAULT_IPV4=$(curl 169.254.169.254/1.0/meta-data/local-ipv4)
 
               cat << EOF | tee /etc/etcd2-environment
-              ETCD_INITIAL_CLUSTER_TOKEN="$(curl http://169.254.169.254/openstack/latest/meta_data.json |
-                jq -r .meta.etcd_initial_cluster_token)"
+              ETCD_PROXY="on"
               ETCD_INITIAL_CLUSTER="$(curl http://169.254.169.254/openstack/latest/meta_data.json |
                 jq -r .meta.etcd_initial_cluster)"
-              ETCD_INITIAL_CLUSTER_STATE="$(curl http://169.254.169.254/openstack/latest/meta_data.json |
-                jq -r .meta.etcd_initial_cluster_state)"
               ETCD_ADVERTISE_CLIENT_URLS="http://${DEFAULT_IPV4}:2379"
-              ETCD_INITIAL_ADVERTISE_PEER_URLS="http://${DEFAULT_IPV4}:2380"
               ETCD_LISTEN_CLIENT_URLS="http://0.0.0.0:2379,http://0.0.0.0:4001"
               ETCD_LISTEN_PEER_URLS="http://${DEFAULT_IPV4}:2380,http://${DEFAULT_IPV4}:7001"
-              ETCD_NAME=$(curl http://169.254.169.254/openstack/latest/meta_data.json | jq -r .meta.etcd_name)
               EOF
 
           - path: /etc/systemd/system/fleet.service.d/10-metadata.conf
             permissions: 0644
             content: |
               [Service]
-              Environment="FLEET_METADATA=role=services"
+              Environment="FLEET_METADATA=role=worker"
 
         runcmd:
           - set -x
@@ -94,6 +94,7 @@ resources:
           - systemctl start fleet.service
 
         final_message: "The system is finally up, after $UPTIME seconds"
+
 
 parameters:
   key_name:
@@ -118,21 +119,12 @@ parameters:
   flavor:
     type: string
 
-  prefix:
-    type: string
-
   anti_affinity:
     type: string
 
-  index:
-    type: number
-
-  etcd_initial_cluster_token:
+  instance_basename:
     type: string
 
   etcd_initial_cluster:
     type: string
-
-  etcd_initial_cluster_state:
-    type: string
-    default: "new"
+    description: "static0=http://192.168.1.10:2380,static1=http://192.168.1.11:2380,static2=http://192.168.1.12:2380"
