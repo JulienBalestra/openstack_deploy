@@ -274,6 +274,36 @@ resources:
               [Install]
               WantedBy=multi-user.target
 
+          - path: /etc/systemd/system/fleet@.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=Fleet starter
+
+              Requires=fleet.service
+              After=fleet.service
+
+              [Service]
+              Type=oneshot
+              SyslogIdentifier=%p
+              RemainAfterExit=yes
+              WorkingDirectory=/etc/systemd/system/
+              ExecStart=/usr/bin/fleetctl start %i.service
+              Restart=always
+              RestartSec=15s
+
+              [Install]
+              WantedBy=multi-user.target
+
+          - path: /etc/aci_url
+            permissions: 0644
+            content:
+              str_replace:
+                template: |
+                  ACI_URL=__aci_url__
+                params:
+                  __aci_url__: { get_param: aci_url }
+
         runcmd:
           - set -x
           - set -e
@@ -303,6 +333,8 @@ resources:
           - rm -Rf /tmp/fleet_install
 
           - mkdir -v /tmp/rkt_install
+          - mkdir -pv /usr/lib/rkt/stage1-images
+          - chown -R rkt:rkt /usr/lib/rkt/
           - [curl, -L, {get_param: insecure}, {get_param: rkt_tar}, -o, /tmp/rkt_install/rkt.tar.gz]
           - [cd, -P, /tmp/rkt_install]
           - [tar, -xzvf, /tmp/rkt_install/rkt.tar.gz, --strip-components=1]
@@ -311,6 +343,9 @@ resources:
           - [mv, /tmp/rkt_install/init/systemd/rkt-metadata.socket, /etc/systemd/system/rkt-metadata.socket]
           - [mv, /tmp/rkt_install/init/systemd/rkt-gc.timer, /etc/systemd/system/rkt-gc.timer]
           - [mv, /tmp/rkt_install/init/systemd/rkt-gc.service, /etc/systemd/system/rkt-gc.service]
+          - [mv, /tmp/rkt_install/stage1-coreos.aci, /usr/lib/rkt/stage1-images/stage1-coreos.aci]
+          - [mv, /tmp/rkt_install/stage1-fly.aci, /usr/lib/rkt/stage1-images/stage1-fly.aci]
+          - [mv, /tmp/rkt_install/bash_completion/rkt.bash, /usr/share/bash-completion/completions/rkt]
           - rkt version
           - rm -Rf /tmp/rkt_install
 
@@ -422,6 +457,10 @@ parameters:
   confd_bin:
     type: string
     description: "https://github.com/coreos/fleet/releases/version/arch.tar.gz"
+
+  aci_url:
+    type: string
+    description: "https://object-store.api/v1/AUTH_token/aci/"
 
   ssh_authorized_keys:
     type: comma_delimited_list
