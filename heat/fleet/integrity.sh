@@ -36,7 +36,8 @@ go_to_dirname
  fleet_tar \
  confd_bin \
  rkt_tar \
- ssh_authorized_keys
+ ssh_authorized_keys \
+ aci_url
 
 ../../scripts/heat_tools/stack_integrity.py \
 -v True \

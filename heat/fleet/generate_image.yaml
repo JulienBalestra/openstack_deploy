@@ -274,27 +274,6 @@ resources:
               [Install]
               WantedBy=multi-user.target
 
-          - path: /etc/systemd/system/fleet@.service
-            permissions: 0644
-            content: |
-              [Unit]
-              Description=Fleet starter
-
-              Requires=fleet.service
-              After=fleet.service
-
-              [Service]
-              Type=oneshot
-              SyslogIdentifier=%p
-              RemainAfterExit=yes
-              WorkingDirectory=/etc/systemd/system/
-              ExecStart=/usr/bin/fleetctl start %i.service
-              Restart=always
-              RestartSec=15s
-
-              [Install]
-              WantedBy=multi-user.target
-
           - path: /etc/aci_url
             permissions: 0644
             content:
@@ -354,7 +333,6 @@ resources:
           - /usr/bin/confd --version
 
           - systemctl daemon-reload
-          - systemctl enable rkt-metadata.service
           - systemctl enable rkt-metadata.service
           - systemctl enable rkt-metadata.socket
           - systemctl enable rkt-gc.timer
