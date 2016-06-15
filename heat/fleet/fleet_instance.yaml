@@ -136,7 +136,7 @@ resources:
               RestartSec=30s
 
               [X-Fleet]
-              MachineMetadata=role=worker
+              MachineMetadata="role=worker" "state=statefull"
               Conflicts=zookeeper@*
 
           - path: /etc/systemd/system/zookeeper-sidekick@.service
@@ -158,7 +158,6 @@ resources:
               RestartSec=30s
 
               [X-Fleet]
-              MachineMetadata=role=worker
               MachineOf=zookeeper@%i.service
 
           - path: /opt/bin/rkt-sidekick
@@ -195,7 +194,10 @@ resources:
           - systemctl start etcd2.service
           - systemctl start setup-fleet-environment.service
           - systemctl start fleet.service
+
           - ["systemctl", "start", "fleet-zookeeper@0.service"]
+          - ["systemctl", "start", "fleet-zookeeper@1.service"]
+          - ["systemctl", "start", "fleet-zookeeper@2.service"]
 
         final_message: "The system is finally up, after $UPTIME seconds"
 
