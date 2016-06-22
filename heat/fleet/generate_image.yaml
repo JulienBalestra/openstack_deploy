@@ -257,6 +257,7 @@ resources:
               Description=Fleet daemon
 
               After=etcd2.service
+              After=flannel.service
 
               Requires=setup-fleet-environment.service
               After=setup-fleet-environment.service
@@ -267,12 +268,45 @@ resources:
               [Service]
               Environment=GOMAXPROCS=1
               EnvironmentFile=/etc/fleet-environment
+              EnvironmentFile=/run/flannel/subnet.env
+              ExecStartPre=/usr/bin/test $FLANNEL_SUBNET
               ExecStart=/usr/bin/fleetd
               Restart=always
               RestartSec=15s
 
               [Install]
               WantedBy=multi-user.target
+
+          - path: /etc/systemd/system/flannel.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=Flannel
+
+              Requires=etcd2.service
+              After=etcd2.service
+
+              [Service]
+              ExecStartPre=/usr/bin/etcdctl set /coreos.com/network/config '{ "Network": "10.1.0.0/16" }'
+              ExecStartPre=/sbin/modprobe tun
+              ExecStartPre=/bin/ls -ls /dev/net/tun
+              ExecStartPre=/bin/mkdir -p /run/flannel
+              ExecStart=/usr/bin/docker run --privileged=true --rm --net=host \
+                -v /dev/net/tun:/dev/net/tun:ro -v /run/flannel:/run/flannel \
+                quay.io/coreos/flannel:0.5.5
+              Restart=always
+              RestartSec=30s
+
+              [Install]
+              WantedBy=multi-user.target
+
+          - path: /etc/rkt/net.d/10-flannel.conf
+            permissions: 0644
+            content: |
+              {
+                  "name": "default",
+                  "type": "flannel"
+              }
 
           - path: /etc/aci_url
             permissions: 0644
@@ -317,20 +351,25 @@ resources:
           - [curl, -L, {get_param: insecure}, {get_param: rkt_tar}, -o, /tmp/rkt_install/rkt.tar.gz]
           - [cd, -P, /tmp/rkt_install]
           - [tar, -xzvf, /tmp/rkt_install/rkt.tar.gz, --strip-components=1]
-          - [mv, /tmp/rkt_install/rkt, /usr/bin/rkt]
-          - [mv, /tmp/rkt_install/init/systemd/rkt-metadata.service, /etc/systemd/system/rkt-metadata.service]
-          - [mv, /tmp/rkt_install/init/systemd/rkt-metadata.socket, /etc/systemd/system/rkt-metadata.socket]
-          - [mv, /tmp/rkt_install/init/systemd/rkt-gc.timer, /etc/systemd/system/rkt-gc.timer]
-          - [mv, /tmp/rkt_install/init/systemd/rkt-gc.service, /etc/systemd/system/rkt-gc.service]
-          - [mv, /tmp/rkt_install/stage1-coreos.aci, /usr/lib/rkt/stage1-images/stage1-coreos.aci]
-          - [mv, /tmp/rkt_install/stage1-fly.aci, /usr/lib/rkt/stage1-images/stage1-fly.aci]
-          - [mv, /tmp/rkt_install/bash_completion/rkt.bash, /usr/share/bash-completion/completions/rkt]
+          - [mv, -v, /tmp/rkt_install/rkt, /usr/bin/rkt]
+          - [mv, -v, /tmp/rkt_install/init/systemd/rkt-metadata.service, /etc/systemd/system/rkt-metadata.service]
+          - [mv, -v, /tmp/rkt_install/init/systemd/rkt-metadata.socket, /etc/systemd/system/rkt-metadata.socket]
+          - [mv, -v, /tmp/rkt_install/init/systemd/rkt-gc.timer, /etc/systemd/system/rkt-gc.timer]
+          - [mv, -v, /tmp/rkt_install/init/systemd/rkt-gc.service, /etc/systemd/system/rkt-gc.service]
+          - [mv, -v, /tmp/rkt_install/stage1-coreos.aci, /usr/lib/rkt/stage1-images/stage1-coreos.aci]
+          - [mv, -v, /tmp/rkt_install/stage1-fly.aci, /usr/lib/rkt/stage1-images/stage1-fly.aci]
+          - [mv, -v, /tmp/rkt_install/bash_completion/rkt.bash, /usr/share/bash-completion/completions/rkt]
           - rkt version
           - rm -Rf /tmp/rkt_install
 
           - [curl, -L, {get_param: insecure}, {get_param: confd_bin}, -o, /usr/bin/confd]
           - [chmod, +x, /usr/bin/confd]
           - /usr/bin/confd --version
+
+          - [curl, -L, {get_param: insecure}, {get_param: flannel_tar}, -o, /tmp/flannel.tar.gz]
+          - docker load < /tmp/flannel.tar.gz
+          - docker inspect quay.io/coreos/flannel:0.5.5
+          - rm -v /tmp/flannel.tar.gz
 
           - systemctl daemon-reload
           - systemctl enable rkt-metadata.service
@@ -343,7 +382,7 @@ resources:
         final_message: "The system is finally up, after $UPTIME seconds. Shutting down for image building"
         power_state:
           delay: "+1"
-          timeout: 60
+          timeout: 30
           mode: poweroff
           message: Shutdown for snapshot
           condition: True
@@ -435,6 +474,10 @@ parameters:
   confd_bin:
     type: string
     description: "https://github.com/coreos/fleet/releases/version/arch.tar.gz"
+
+  flannel_tar:
+    type: string
+    description: "quay.io/coreos/flannel container tar.gz"
 
   aci_url:
     type: string
