@@ -266,6 +266,7 @@ resources:
               After=fleet.socket
 
               [Service]
+              SyslogIdentifier=%p
               Environment=GOMAXPROCS=1
               EnvironmentFile=/etc/fleet-environment
               EnvironmentFile=/run/flannel/subnet.env
@@ -287,6 +288,8 @@ resources:
               After=etcd2.service
 
               [Service]
+              Slice=machine.slice
+              SyslogIdentifier=%p
               ExecStartPre=/usr/bin/etcdctl set /coreos.com/network/config '{ "Network": "10.1.0.0/16" }'
               ExecStartPre=/sbin/modprobe tun
               ExecStartPre=/bin/ls -ls /dev/net/tun
