@@ -135,6 +135,7 @@ resources:
               ExecStop=-/bin/rm -v /tmp/%p_%i
               Restart=always
               RestartSec=30s
+              TimeoutStartSec=2min
 
               [X-Fleet]
               MachineMetadata="role=worker" "state=statefull"
@@ -188,6 +189,7 @@ resources:
               ExecStop=-/bin/rm -v ${KAFKA_CONF}/hosts
               Restart=always
               RestartSec=30s
+              TimeoutStartSec=2min
 
               [X-Fleet]
               MachineMetadata="role=worker" "state=statefull"

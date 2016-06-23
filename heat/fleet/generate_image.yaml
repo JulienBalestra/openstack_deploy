@@ -290,7 +290,8 @@ resources:
               [Service]
               Slice=machine.slice
               SyslogIdentifier=%p
-              ExecStartPre=/usr/bin/etcdctl set /coreos.com/network/config '{ "Network": "10.1.0.0/16" }'
+              ExecStartPre=/usr/bin/etcdctl set /coreos.com/network/config \
+                '{"Network":"10.1.0.0/16", "Backend": {"Type": "vxlan"}}'
               ExecStartPre=/sbin/modprobe tun
               ExecStartPre=/bin/ls -ls /dev/net/tun
               ExecStartPre=/bin/mkdir -p /run/flannel
