@@ -116,7 +116,6 @@ resources:
          - jq
          - git
          - wget
-         - docker.io
 
         users:
           - name: cloud
@@ -288,28 +287,75 @@ resources:
               After=etcd2.service
 
               [Service]
-              Slice=machine.slice
               SyslogIdentifier=%p
               ExecStartPre=/usr/bin/etcdctl set /coreos.com/network/config \
                 '{"Network":"10.1.0.0/16", "Backend": {"Type": "vxlan"}}'
               ExecStartPre=/sbin/modprobe tun
+              ExecStartPre=/sbin/modprobe ip_tables
               ExecStartPre=/bin/ls -ls /dev/net/tun
               ExecStartPre=/bin/mkdir -p /run/flannel
               ExecStart=/usr/bin/docker run --privileged=true --rm --net=host \
                 -v /dev/net/tun:/dev/net/tun:ro -v /run/flannel:/run/flannel \
-                quay.io/coreos/flannel:0.5.5
+                quay.io/coreos/flannel:0.5.5 /opt/bin/flanneld --ip-masq=true
               Restart=always
-              RestartSec=30s
+              RestartSec=5s
 
               [Install]
               WantedBy=multi-user.target
+
+          - path: /lib/systemd/system/docker.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=Docker Application Container Engine
+              Documentation=https://docs.docker.com
+              After=network.target docker.socket
+              Requires=docker.socket
+
+              [Service]
+              Type=notify
+              # the default is not to use systemd for cgroups because the delegate issues still
+              # exists and systemd currently does not support the cgroup feature set required
+              # for containers run by docker
+              ExecStart=/usr/bin/docker daemon
+              ExecReload=/bin/kill -s HUP $MAINPID
+              LimitNOFILE=1048576
+              LimitNPROC=1048576
+              LimitCORE=infinity
+              TimeoutStartSec=0
+              # set delegate yes so that systemd does not reset the cgroups of docker containers
+              Delegate=yes
+              # kill only the docker process, not all processes in the cgroup
+              KillMode=process
+
+              [Install]
+              WantedBy=multi-user.target
+
+          - path: /lib/systemd/system/docker.socket
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=Docker Socket for the API
+              PartOf=docker.service
+
+              [Socket]
+              ListenStream=/var/run/docker.sock
+              SocketMode=0660
+              SocketUser=root
+
+              [Install]
+              WantedBy=sockets.target
 
           - path: /etc/rkt/net.d/10-flannel.conf
             permissions: 0644
             content: |
               {
                   "name": "default",
-                  "type": "flannel"
+                  "type": "flannel",
+                  "delegate": {
+                    "isDefaultGateway": true,
+                    "ipMasq": true
+                  }
               }
 
           - path: /etc/aci_url
@@ -324,6 +370,21 @@ resources:
         runcmd:
           - set -x
           - set -e
+
+          - mkdir -v /tmp/docker_install
+          - [curl, -L, {get_param: insecure}, {get_param: docker_tar}, -o, /tmp/docker_install/docker.tar.gz]
+          - cd -P /tmp/docker_install
+          - tar -xzvf /tmp/docker_install/docker.tar.gz --strip-components=1
+          - mv -v /tmp/docker_install/docker /usr/bin/docker
+          - mv -v /tmp/docker_install/docker-containerd /usr/bin/docker-containerd
+          - mv -v /tmp/docker_install/docker-containerd-ctr /usr/bin/docker-containerd-ctr
+          - mv -v /tmp/docker_install/docker-containerd-shim /usr/bin/docker-containerd-shim
+          - mv -v /tmp/docker_install/docker-runc /usr/bin/docker-runc
+
+          - systemctl daemon-reload
+          - systemctl enable docker.socket
+          - systemctl enable docker.service
+          - systemctl start docker.service
 
           - chown etcd:etcd /etc/etcd2-environment
           - chown fleet:fleet /etc/fleet-environment
@@ -482,6 +543,10 @@ parameters:
   flannel_tar:
     type: string
     description: "quay.io/coreos/flannel container tar.gz"
+
+  docker_tar:
+    type: string
+    description: "https://get.docker.com/builds/Linux/x86_64/docker-1.11.0.tgz"
 
   aci_url:
     type: string

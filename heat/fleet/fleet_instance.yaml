@@ -124,14 +124,18 @@ resources:
               After=fleet.service
 
               [Service]
-              Slice=machine.slice
               SyslogIdentifier=%p
               EnvironmentFile=/etc/aci_url
+              Environment=ZOO_VOLUMES=/var/lib/zookeeper
               ExecStartPre=/usr/bin/curl -Ifk ${ACI_URL}/zookeeper.aci
               ExecStartPre=-/bin/rm -v /tmp/%p_%i
+              ExecStartPre=/bin/mkdir -pv ${ZOO_VOLUMES}/conf
+              ExecStartPre=/bin/mkdir -pv ${ZOO_VOLUMES}/data
               ExecStartPre=/usr/bin/rkt --insecure-options=all fetch ${ACI_URL}/zookeeper.aci
               ExecStart=/usr/bin/rkt run \
-                --uuid-file-save=/tmp/%p_%i quay.io/julienbalestra/zookeeper
+                --uuid-file-save=/tmp/%p_%i quay.io/julienbalestra/zookeeper \
+                --volume=volume-zookeeper-conf,kind=host,source=${ZOO_VOLUMES}/conf,readOnly=true \
+                --volume=volume-zookeeper-data,kind=host,source=${ZOO_VOLUMES}/data,readOnly=false
               ExecStop=-/bin/rm -v /tmp/%p_%i
               Restart=always
               RestartSec=30s
@@ -172,7 +176,6 @@ resources:
               After=fleet.service
 
               [Service]
-              Slice=machine.slice
               SyslogIdentifier=%p
               EnvironmentFile=/etc/aci_url
               Environment=KAFKA_CONF=/var/lib/kafka/conf
@@ -320,6 +323,37 @@ resources:
                 etcdctl set --ttl 60 $1/$1_$2 $IP
                 sleep 30
               done
+
+          - path: /etc/systemd/system/jds_kafka.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=Kafka producer
+
+              Requires=fleet.service
+              After=fleet.service
+
+              [Service]
+              SyslogIdentifier=%p
+              EnvironmentFile=/etc/aci_url
+              ExecStartPre=/usr/bin/curl -Ifk ${ACI_URL}/%p.aci
+              ExecStartPre=-/bin/rm -v /tmp/%p_%i
+              ExecStartPre=/usr/bin/rkt --insecure-options=all fetch ${ACI_URL}/%p.aci
+              ExecStart=/usr/bin/rkt run --net=host \
+                --uuid-file-save=/tmp/%p_%i --volume journal,kind=host,source=/run/log/journal \
+                --set-env=SINCEDB=/run/log/journal/sincedb \
+                --set-env=ETCD_DIR=kafka \
+                quay.io/julienbalestra/%p \
+                --mount volume=journal,target=/run/log/journal
+
+              ExecStop=-/bin/rm -v /tmp/%p_%i
+
+              Restart=always
+              RestartSec=30s
+              TimeoutStartSec=2min
+
+              [X-Fleet]
+              Conflicts=jds_kafka.service
 
         runcmd:
           - set -x
