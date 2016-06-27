@@ -283,6 +283,7 @@ resources:
           - path: /etc/kafka/conf/templates/kafka.tmpl
             permissions: 0644
             content: |
+              hostname={{getenv "HOSTNAME"}}
               broker.id={{getenv "INSTANCE"}}
               log.dirs=/tmp/kafka-logs
               log.retention.check.interval.ms=300000
@@ -336,24 +337,26 @@ resources:
               [Service]
               SyslogIdentifier=%p
               EnvironmentFile=/etc/aci_url
+              EnvironmentFile=/etc/network-environment
+              Environment=SINCE_DB=/var/lib/jds_kafka/sincedb
               ExecStartPre=/usr/bin/curl -Ifk ${ACI_URL}/%p.aci
               ExecStartPre=-/bin/rm -v /tmp/%p_%i
+              ExecStartPre=/bin/mkdir -vp /var/lib/jds_kafka
+              ExecStartPre=-/bin/cat -e $SINCE_DB
               ExecStartPre=/usr/bin/rkt --insecure-options=all fetch ${ACI_URL}/%p.aci
-              ExecStart=/usr/bin/rkt run --net=host \
+              ExecStart=/usr/bin/rkt run --net=host --dns=${DEFAULT_IPV4} \
                 --uuid-file-save=/tmp/%p_%i --volume journal,kind=host,source=/run/log/journal \
-                --set-env=SINCEDB=/run/log/journal/sincedb \
+                --set-env=SINCEDB=${SINCE_DB} \
                 --set-env=ETCD_DIR=kafka \
                 quay.io/julienbalestra/%p \
                 --mount volume=journal,target=/run/log/journal
-
               ExecStop=-/bin/rm -v /tmp/%p_%i
-
               Restart=always
               RestartSec=30s
-              TimeoutStartSec=2min
+              TimeoutStartSec=10min
 
               [X-Fleet]
-              Conflicts=jds_kafka.service
+              Global=true
 
         runcmd:
           - set -x
@@ -365,11 +368,17 @@ resources:
           - systemctl enable flannel.service
           - systemctl enable fleet.socket
           - systemctl enable fleet.service
+          - systemctl enable skydns.service
+
           - systemctl start setup-etcd2-environment.service
           - systemctl start etcd2.service
+
           - systemctl start flannel.service
+
           - systemctl start setup-fleet-environment.service
           - systemctl start fleet.service
+
+          - systemctl start skydns.service
 
           - ["systemctl", "start", "fleet-zookeeper@0.service"]
           - ["systemctl", "start", "fleet-kafka@0.service"]

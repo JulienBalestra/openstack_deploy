@@ -146,6 +146,9 @@ resources:
           - path: /etc/fleet-environment
             permissions: 0644
 
+          - path: /etc/network-environment
+            permissions: 0644
+
           - path: /opt/bin/setup-etcd2-environment
             permissions: 0755
             content: |
@@ -177,6 +180,9 @@ resources:
               Description=Setup etcd2 environment
 
               After=network.target
+
+              Requires=setup-network-environment.service
+              After=setup-network-environment.service
 
               [Service]
               SyslogIdentifier=%p
@@ -258,8 +264,8 @@ resources:
               After=etcd2.service
               After=flannel.service
 
-              Requires=setup-fleet-environment.service
-              After=setup-fleet-environment.service
+              Requires=setup-fleet-environment.service setup-network-environment
+              After=setup-fleet-environment.service setup-network-environment
 
               Wants=fleet.socket
               After=fleet.socket
@@ -303,6 +309,59 @@ resources:
               [Install]
               WantedBy=multi-user.target
 
+          - path: /etc/systemd/system/skydns.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=SkyDNS
+
+              Requires=etcd2.service setup-network-environment.service
+              After=etcd2.service setup-network-environment.service
+
+              [Service]
+              SyslogIdentifier=%p
+              EnvironmentFile=/etc/aci_url
+              Environment=SKYDNS_ADDR=0.0.0.0:53
+              ExecStartPre=/usr/bin/rkt --insecure-options=all fetch ${ACI_URL}/%p.aci
+              ExecStartPre=/usr/bin/etcdctl set /skydns/config \
+                '{"domain": "skydns.local"}'
+              ExecStart=/usr/bin/rkt run --net=host --set-env=SKYDNS_ADDR=${SKYDNS_ADDR} skynetservices/skydns
+              Restart=always
+              RestartSec=20s
+
+              [Install]
+              WantedBy=multi-user.target
+
+          - path: /etc/systemd/system/setup-network-environment.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=Setting up network environment file
+
+              [Service]
+              SyslogIdentifier=%p
+              Type=oneshot
+              Environment=FILE=/etc/network-environment
+              ExecStartPre=/bin/cat $FILE
+              ExecStart=/opt/bin/setup-network-environment -o $FILE
+              ExecStartPost=/bin/cat $FILE
+
+              [Install]
+              WantedBy=multi-user.target
+
+          - path: /etc/systemd/system/setup-network-environment.timer
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=Periodic Setting up network environment file
+
+              [Timer]
+              OnActiveSec=0s
+              OnUnitActiveSec=1h
+
+              [Install]
+              WantedBy=multi-user.target
+
           - path: /lib/systemd/system/docker.service
             permissions: 0644
             content: |
@@ -314,17 +373,12 @@ resources:
 
               [Service]
               Type=notify
-              # the default is not to use systemd for cgroups because the delegate issues still
-              # exists and systemd currently does not support the cgroup feature set required
-              # for containers run by docker
               ExecStart=/usr/bin/docker daemon
               ExecReload=/bin/kill -s HUP $MAINPID
               LimitNOFILE=1048576
               LimitNPROC=1048576
               LimitCORE=infinity
               TimeoutStartSec=0
-              # set delegate yes so that systemd does not reset the cgroups of docker containers
-              Delegate=yes
               # kill only the docker process, not all processes in the cgroup
               KillMode=process
 
@@ -432,14 +486,20 @@ resources:
           - /usr/bin/confd --version
 
           - [curl, -L, {get_param: insecure}, {get_param: flannel_tar}, -o, /tmp/flannel.tar.gz]
-          - docker load < /tmp/flannel.tar.gz
-          - docker inspect quay.io/coreos/flannel:0.5.5
+          - docker load < /tmp/flannel.tar.gz ; sleep 1
           - rm -v /tmp/flannel.tar.gz
+          - docker inspect quay.io/coreos/flannel:0.5.5
 
           - systemctl daemon-reload
           - systemctl enable rkt-metadata.service
           - systemctl enable rkt-metadata.socket
           - systemctl enable rkt-gc.timer
+
+          - mkdir -pv /opt/bin/
+          - [curl, -L, {get_param: insecure}, {get_param: netenv_bin}, -o, /opt/bin/setup-network-environment]
+          - chmod +x /opt/bin/setup-network-environment
+          - systemctl enable setup-network-environment.timer
+          - systemctl enable setup-network-environment.service
 
           - rm -v /etc/machine-id ; rm -v /var/lib/dbus/machine-id
           - touch /etc/machine-id ; touch /var/lib/dbus/machine-id
@@ -551,6 +611,10 @@ parameters:
   aci_url:
     type: string
     description: "https://object-store.api/v1/AUTH_token/aci/"
+
+  netenv_bin:
+    type: string
+    description: "https://object-store.api/v1/AUTH_token/netenv/setup-network-environment"
 
   ssh_authorized_keys:
     type: comma_delimited_list

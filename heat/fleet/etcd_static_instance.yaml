@@ -89,10 +89,12 @@ resources:
           - systemctl enable etcd2.service
           - systemctl enable fleet.socket
           - systemctl enable fleet.service
+          - systemctl enable skydns.service
           - systemctl start setup-etcd2-environment.service
           - systemctl start etcd2.service
           - systemctl start setup-fleet-environment.service
           - systemctl start fleet.service
+          - systemctl start skydns.service
 
         final_message: "The system is finally up, after $UPTIME seconds"
 
