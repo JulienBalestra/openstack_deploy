@@ -85,15 +85,17 @@ resources:
 
           - systemctl daemon-reload
           - systemctl enable setup-etcd2-environment.service
-          - systemctl enable setup-fleet-environment.service
           - systemctl enable etcd2.service
+          - systemctl enable flannel.service
+          - systemctl enable setup-fleet-environment.service
           - systemctl enable fleet.socket
           - systemctl enable fleet.service
           - systemctl enable skydns.service
           - systemctl start setup-etcd2-environment.service
           - systemctl start etcd2.service
-          - systemctl start setup-fleet-environment.service
+          - systemctl start flannel.service
           - systemctl start fleet.service
+          - systemctl start setup-fleet-environment.service
           - systemctl start skydns.service
 
         final_message: "The system is finally up, after $UPTIME seconds"
