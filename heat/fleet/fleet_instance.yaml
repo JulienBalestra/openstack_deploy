@@ -128,15 +128,15 @@ resources:
               EnvironmentFile=/etc/aci_url
               Environment=ZOO_VOLUMES=/var/lib/zookeeper
               ExecStartPre=/usr/bin/curl -Ifk ${ACI_URL}/zookeeper.aci
-              ExecStartPre=-/bin/rm -v /tmp/%p_%i
+              ExecStartPre=-/bin/rm -v /tmp/%p%i
               ExecStartPre=/bin/mkdir -pv ${ZOO_VOLUMES}/conf
               ExecStartPre=/bin/mkdir -pv ${ZOO_VOLUMES}/data
               ExecStartPre=/usr/bin/rkt --insecure-options=all fetch ${ACI_URL}/zookeeper.aci
               ExecStart=/usr/bin/rkt run \
-                --uuid-file-save=/tmp/%p_%i quay.io/julienbalestra/zookeeper \
+                --uuid-file-save=/tmp/%p%i quay.io/julienbalestra/zookeeper \
                 --volume=volume-zookeeper-conf,kind=host,source=${ZOO_VOLUMES}/conf,readOnly=true \
                 --volume=volume-zookeeper-data,kind=host,source=${ZOO_VOLUMES}/data,readOnly=false
-              ExecStop=-/bin/rm -v /tmp/%p_%i
+              ExecStop=-/bin/rm -v /tmp/%p%i
               Restart=always
               RestartSec=30s
               TimeoutStartSec=2min
@@ -156,10 +156,11 @@ resources:
 
               [Service]
               SyslogIdentifier=%p
-              ExecStartPre=-/usr/bin/etcdctl rm zookeeper/zookeeper_%i
-              ExecStartPre=/bin/ls -sl /tmp/zookeeper_%i
+              Environment=SKYDNS=/skydns/local/skydns
+              ExecStartPre=-/usr/bin/etcdctl rm zookeeper/zookeeper%i
+              ExecStartPre=/bin/ls -sl /tmp/zookeeper%i
               ExecStart=/opt/bin/rkt-sidekick zookeeper %i
-              ExecStop=-/usr/bin/etcdctl rm zookeeper/zookeeper_%i
+              ExecStop=-/usr/bin/etcdctl rm zookeeper/zookeeper%i
               Restart=always
               RestartSec=30s
 
@@ -178,17 +179,17 @@ resources:
               [Service]
               SyslogIdentifier=%p
               EnvironmentFile=/etc/aci_url
+              EnvironmentFile=/etc/network-environment
               Environment=KAFKA_CONF=/var/lib/kafka/conf
               ExecStartPre=/usr/bin/curl -Ifk ${ACI_URL}/%p.aci
               ExecStartPre=/bin/ls -ls ${KAFKA_CONF}/server.properties
-              ExecStartPre=-/bin/rm -v /tmp/%p_%i
-              ExecStartPre=/bin/bash -c "echo 127.0.0.1 localhost %p_%i > ${KAFKA_CONF}/hosts"
+              ExecStartPre=-/bin/rm -v /tmp/%p%i
               ExecStartPre=/usr/bin/rkt --insecure-options=all fetch ${ACI_URL}/%p.aci
               ExecStart=/usr/bin/rkt run \
-                --uuid-file-save=/tmp/%p_%i quay.io/julienbalestra/%p \
+                --uuid-file-save=/tmp/%p%i --dns=${DEFAULT_IPV4} --dns-search=%p.skydns.local quay.io/julienbalestra/%p \
                 --volume=volume-kafka-conf,kind=host,source=${KAFKA_CONF},readOnly=true \
-                --hostname="%p_%i"
-              ExecStop=-/bin/rm -v /tmp/%p_%i
+                --hostname="%p%i"
+              ExecStop=-/bin/rm -v /tmp/%p%i
               ExecStop=-/bin/rm -v ${KAFKA_CONF}/hosts
               Restart=always
               RestartSec=30s
@@ -209,11 +210,12 @@ resources:
               After=fleet.service
 
               [Service]
-              SyslogIdentifier=kafka_%i
-              ExecStartPre=-/usr/bin/etcdctl rm kafka/kafka_%i
-              ExecStartPre=/bin/ls -sl /tmp/kafka_%i
+              SyslogIdentifier=kafka%i
+              Environment=SKYDNS=/skydns/local/skydns
+              ExecStartPre=-/usr/bin/etcdctl rm kafka/kafka%i
+              ExecStartPre=/bin/ls -sl /tmp/kafka%i
               ExecStart=/opt/bin/rkt-sidekick kafka %i
-              ExecStop=-/usr/bin/etcdctl rm kafka/kafka_%i
+              ExecStop=-/usr/bin/etcdctl rm kafka/kafka%i
               Restart=always
               RestartSec=10s
 
@@ -230,11 +232,13 @@ resources:
               After=fleet.service
 
               [Service]
-              SyslogIdentifier=kafka_%i
+              SyslogIdentifier=kafka%i
               WorkingDirectory=/etc/systemd/system/
-              Environment=HOSTNAME=kafka_%i
+              Environment=HOSTNAME=kafka%i
               Environment=UNIT=kafka@%i.service
               Environment=INSTANCE=%i
+              Environment=KAFKA_CONF=/var/lib/kafka/conf
+              ExecStartPre=/bin/mkdir -pv ${KAFKA_CONF}
               ExecStartPre=/usr/bin/etcdctl ls zookeeper
               ExecStartPre=/usr/bin/fleetctl load kafka@%i.service
               ExecStart=/usr/bin/confd -confdir=/etc/kafka/conf -node http://127.0.0.1:2379 -watch=true
@@ -264,10 +268,8 @@ resources:
               Restart=on-failure
               RestartSec=10s
 
-          - path: /var/lib/kafka/conf/hosts
+          - path: /var/lib/kafka/server.properties
             permissions: 0644
-            content: |
-              127.0.0.1 localhost
 
           - path: /etc/kafka/conf/conf.d/kafka.toml
             permissions: 0644
@@ -284,7 +286,9 @@ resources:
             permissions: 0644
             content: |
               hostname={{getenv "HOSTNAME"}}
+              advertised.host.name={{getenv "HOSTNAME"}}
               broker.id={{getenv "INSTANCE"}}
+              advertised.port=9092
               log.dirs=/tmp/kafka-logs
               log.retention.check.interval.ms=300000
               log.retention.hours=168
@@ -318,10 +322,14 @@ resources:
 
               while true
               do
-                UUID=$(cat /tmp/$1_$2)
+                UUID=$(cat /tmp/$1$2)
                 STATUS=$(rkt status $UUID)
                 IP=$(echo $STATUS | grep -Eo '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}')
-                etcdctl set --ttl 60 $1/$1_$2 $IP
+                etcdctl set --ttl 60 $1/${1}${2} $IP
+                if [ $SKYDNS ]
+                then
+                  etcdctl set --ttl 60 $SKYDNS/$1/${1}${2} "{\"host\": \"${IP}\"}"
+                fi
                 sleep 30
               done
 
@@ -331,35 +339,39 @@ resources:
               [Unit]
               Description=Kafka producer
 
-              Requires=fleet.service
-              After=fleet.service
+              Requires=fleet.service skydns.service flannel.service
+              After=fleet.service skydns.service flannel.service
 
               [Service]
               SyslogIdentifier=%p
               EnvironmentFile=/etc/aci_url
               EnvironmentFile=/etc/network-environment
-              Environment=SINCE_DB=/var/lib/jds_kafka/sincedb
+              Environment=DB_FOLDER=/var/lib/jds
+              Environment=SINCE_DB=/var/lib/jds/sincedb
               ExecStartPre=/usr/bin/curl -Ifk ${ACI_URL}/%p.aci
-              ExecStartPre=-/bin/rm -v /tmp/%p_%i
-              ExecStartPre=/bin/mkdir -vp /var/lib/jds_kafka
+              ExecStartPre=-/bin/rm -v /tmp/%p%i
+              ExecStartPre=/bin/mkdir -vp $DB_FOLDER
               ExecStartPre=-/bin/cat -e $SINCE_DB
               ExecStartPre=/usr/bin/rkt --insecure-options=all fetch ${ACI_URL}/%p.aci
-              ExecStart=/usr/bin/rkt run --net=host --dns=${DEFAULT_IPV4} \
-                --uuid-file-save=/tmp/%p_%i --volume journal,kind=host,source=/run/log/journal \
+              ExecStart=/usr/bin/rkt run --net=host --dns=${DEFAULT_IPV4} --dns-search=kafka.skydns.local \
+                --uuid-file-save=/tmp/%p%i \
+                --volume journal,kind=host,source=/run/log/journal \
+                --volume sincedb,kind=host,source=${DB_FOLDER} \
                 --set-env=SINCEDB=${SINCE_DB} \
                 --set-env=ETCD_DIR=kafka \
                 quay.io/julienbalestra/%p \
-                --mount volume=journal,target=/run/log/journal
-              ExecStop=-/bin/rm -v /tmp/%p_%i
-              Restart=always
-              RestartSec=30s
-              TimeoutStartSec=10min
+                --mount volume=journal,target=/run/log/journal \
+                --mount volume=sincedb,target=${DB_FOLDER}
 
-              [X-Fleet]
-              Global=true
+              ExecStop=-/bin/rm -v /tmp/%p%i
+              Restart=always
+              RestartSec=10s
+              TimeoutStartSec=10min
 
         runcmd:
           - set -x
+
+          - cd /etc/systemd/system
 
           - systemctl daemon-reload
           - systemctl enable setup-etcd2-environment.service
@@ -379,6 +391,8 @@ resources:
           - systemctl start fleet.service
 
           - systemctl start skydns.service
+
+          - systemctl start jds_kafka.service
 
           - ["systemctl", "start", "fleet-zookeeper@0.service"]
           - ["systemctl", "start", "fleet-kafka@0.service"]
