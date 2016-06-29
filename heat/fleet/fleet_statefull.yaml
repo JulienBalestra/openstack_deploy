@@ -70,7 +70,7 @@ resources:
       desired_capacity: { get_param: size }
       max_size: 20
       resource:
-        type: "FleetInstance"
+        type: "StatefullInstance"
         properties:
           anti_affinity: { get_resource: statefull_anti }
           key_name: { get_param: key_name }

@@ -48,6 +48,16 @@ resources:
           port_range_max: 2380
           direction: ingress
         - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 80
+          port_range_max: 80
+          direction: ingress
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 443
+          port_range_max: 443
+          direction: ingress
+        - remote_ip_prefix: 0.0.0.0/0
           protocol: udp
           port_range_min: 8472
           port_range_max: 8472
@@ -70,8 +80,9 @@ resources:
       desired_capacity: { get_param: size }
       max_size: 20
       resource:
-        type: "FleetInstance"
+        type: "StatelessInstance"
         properties:
+          floatingip_network_name: { get_param: floatingip_network_name }
           anti_affinity: { get_resource: stateless_anti }
           key_name: { get_param: key_name }
           security_group: { get_resource: securitygroup }
@@ -175,6 +186,10 @@ parameters:
     type: number
     default: 2
 
+  floatingip_network_name:
+    type: string
+    label: The Floating IP network for NAT
+    description: floatingip_network_name=public
 
 
 outputs:

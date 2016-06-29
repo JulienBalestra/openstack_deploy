@@ -421,6 +421,78 @@ resources:
                 params:
                   __aci_url__: { get_param: aci_url }
 
+          - path: /opt/bin/rkt-sidekick
+            permissions: 0755
+            content: |
+              #! /usr/bin/env bash
+
+              set -e
+
+              if [ -z $1 ]
+              then
+                echo 'give /tmp/basename_number as $1 == basename/prefix'
+              fi
+
+              if [ -z $2 ]
+              then
+                echo 'give /tmp/basename_number as $2 == number/instance'
+              fi
+
+              while true
+              do
+                UUID=$(cat /tmp/$1$2)
+                STATUS=$(rkt status $UUID)
+                IP=$(echo $STATUS | grep -Eo '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}')
+                etcdctl set --ttl 60 /skydns/local/skydns/$1/${1}${2} "{\"host\": \"${IP}\"}"
+
+                if [ ${TRAEFIK_BACKEND_PORT} ]
+                then
+                  etcdctl set --ttl 60 /traefik/backends/${1}/servers/server${2}/weight '1'
+                  etcdctl set --ttl 60 /traefik/backends/${1}/servers/server${2}/url \
+                    "http://${1}${2}.${1}.skydns.local:${TRAEFIK_BACKEND_PORT}"
+                fi
+
+                sleep 30
+              done
+
+          - path: /etc/systemd/system/jds_kafka.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=Kafka producer
+
+              Requires=fleet.service skydns.service flannel.service
+              After=fleet.service skydns.service flannel.service
+
+              [Service]
+              SyslogIdentifier=%p
+              EnvironmentFile=/etc/aci_url
+              EnvironmentFile=/etc/network-environment
+              Environment=DB_FOLDER=/var/lib/jds
+              Environment=SINCE_DB=/var/lib/jds/sincedb
+              Environment=DNS_SEARCH=kafka.skydns.local
+              ExecStartPre=-/usr/bin/rkt gc --grace-period=0s quay.io/julienbalestra/%p
+              ExecStartPre=/usr/bin/etcdctl ls /skydns/local/skydns/kafka
+              ExecStartPre=/usr/bin/curl -Ifk ${ACI_URL}/%p.aci
+              ExecStartPre=-/bin/rm -v /tmp/%p%i
+              ExecStartPre=/bin/mkdir -vp $DB_FOLDER
+              ExecStartPre=-/bin/cat -e $SINCE_DB
+              ExecStartPre=/usr/bin/rkt --insecure-options=all fetch ${ACI_URL}/%p.aci
+              ExecStart=/usr/bin/rkt run --net=host --dns=${DEFAULT_IPV4} --dns-search=${DNS_SEARCH} \
+                --uuid-file-save=/tmp/%p%i \
+                --volume journal,kind=host,source=/run/log/journal \
+                --volume sincedb,kind=host,source=${DB_FOLDER} \
+                --set-env=SINCEDB=${SINCE_DB} \
+                --set-env=DNS_SEARCH=${DNS_SEARCH} \
+                quay.io/julienbalestra/%p \
+                --mount volume=journal,target=/run/log/journal \
+                --mount volume=sincedb,target=${DB_FOLDER}
+
+              ExecStop=-/bin/rm -v /tmp/%p%i
+              Restart=always
+              RestartSec=30s
+              TimeoutStartSec=10min
+
         runcmd:
           - set -x
           - set -e
@@ -486,7 +558,7 @@ resources:
           - /usr/bin/confd --version
 
           - [curl, -L, {get_param: insecure}, {get_param: flannel_tar}, -o, /tmp/flannel.tar.gz]
-          - docker load < /tmp/flannel.tar.gz ; sleep 1
+          - docker load < /tmp/flannel.tar.gz
           - rm -v /tmp/flannel.tar.gz
           - docker inspect quay.io/coreos/flannel:0.5.5
 

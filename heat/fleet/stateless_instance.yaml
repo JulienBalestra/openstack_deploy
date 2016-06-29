@@ -24,6 +24,13 @@ resources:
       fixed_ips: [{ "subnet_id": { get_param: subnet } }]
       security_groups: [ { get_param: security_group } ]
 
+  floating:
+    type: OS::Neutron::FloatingIP
+    depends_on: [ port ]
+    properties:
+      floating_network: { get_param: floatingip_network_name }
+      port_id: { get_resource: port }
+
   instance:
     depends_on: [ port ]
     type: OS::Nova::Server
@@ -93,279 +100,6 @@ resources:
                 sleep $i
                 etcdctl cluster-health && break
               done
-
-
-          - path: /etc/systemd/system/fleet-zookeeper@.service
-            permissions: 0644
-            content: |
-              [Unit]
-              Description=Fleeter for Zookeeper
-
-              Requires=fleet.service
-              After=fleet.service
-
-              [Service]
-              SyslogIdentifier=%p
-              WorkingDirectory=/etc/systemd/system/
-              ExecStartPre=/usr/bin/fleetctl list-machines
-              ExecStartPre=/usr/bin/fleetctl list-units
-              ExecStart=/usr/bin/fleetctl start zookeeper@%i.service
-              ExecStartPost=/usr/bin/fleetctl start zookeeper-sidekick@%i.service
-              Restart=on-failure
-              RestartSec=30s
-
-          - path: /etc/systemd/system/zookeeper@.service
-            permissions: 0644
-            content: |
-              [Unit]
-              Description=Zookeeper instance
-
-              Requires=fleet.service
-              After=fleet.service
-
-              [Service]
-              SyslogIdentifier=%p
-              EnvironmentFile=/etc/aci_url
-              Environment=ZOO_VOLUMES=/var/lib/zookeeper
-              ExecStartPre=/usr/bin/curl -Ifk ${ACI_URL}/zookeeper.aci
-              ExecStartPre=-/bin/rm -v /tmp/%p%i
-              ExecStartPre=/bin/mkdir -pv ${ZOO_VOLUMES}/conf
-              ExecStartPre=/bin/mkdir -pv ${ZOO_VOLUMES}/data
-              ExecStartPre=/usr/bin/rkt --insecure-options=all fetch ${ACI_URL}/zookeeper.aci
-              ExecStart=/usr/bin/rkt run \
-                --uuid-file-save=/tmp/%p%i quay.io/julienbalestra/zookeeper \
-                --volume=volume-zookeeper-conf,kind=host,source=${ZOO_VOLUMES}/conf,readOnly=true \
-                --volume=volume-zookeeper-data,kind=host,source=${ZOO_VOLUMES}/data,readOnly=false
-              ExecStop=-/bin/rm -v /tmp/%p%i
-              Restart=always
-              RestartSec=30s
-              TimeoutStartSec=10min
-
-              [X-Fleet]
-              MachineMetadata="role=worker" "state=statefull"
-              Conflicts=zookeeper@*
-
-          - path: /etc/systemd/system/zookeeper-sidekick@.service
-            permissions: 0644
-            content: |
-              [Unit]
-              Description=Sidekick for zookeeper
-
-              Requires=fleet.service
-              After=fleet.service
-
-              [Service]
-              SyslogIdentifier=%p
-              Environment=SKYDNS=/skydns/local/skydns
-              ExecStartPre=-/usr/bin/etcdctl rm ${SKYDNS}/zookeeper/zookeeper%i
-              ExecStartPre=/bin/ls -sl /tmp/zookeeper%i
-              ExecStart=/opt/bin/rkt-sidekick zookeeper %i
-              ExecStop=-/usr/bin/etcdctl rm ${SKYDNS}/zookeeper/zookeeper%i
-              Restart=always
-              RestartSec=10s
-
-              [X-Fleet]
-              MachineOf=zookeeper@%i.service
-
-          - path: /etc/systemd/system/kafka@.service
-            permissions: 0644
-            content: |
-              [Unit]
-              Description=Kafka instance
-
-              Requires=fleet.service
-              After=fleet.service
-
-              [Service]
-              SyslogIdentifier=%p
-              EnvironmentFile=/etc/aci_url
-              EnvironmentFile=/etc/network-environment
-              Environment=KAFKA_CONF=/var/lib/kafka/conf
-              ExecStartPre=/usr/bin/curl -Ifk ${ACI_URL}/%p.aci
-              ExecStartPre=/bin/ls -ls ${KAFKA_CONF}/server.properties
-              ExecStartPre=-/bin/rm -v /tmp/%p%i
-              ExecStartPre=/usr/bin/rkt --insecure-options=all fetch ${ACI_URL}/%p.aci
-              ExecStart=/usr/bin/rkt run \
-                --uuid-file-save=/tmp/%p%i --dns=${DEFAULT_IPV4} --dns-search=%p.skydns.local quay.io/julienbalestra/%p \
-                --volume=volume-kafka-conf,kind=host,source=${KAFKA_CONF},readOnly=true \
-                --hostname="%p%i"
-              ExecStop=-/bin/rm -v /tmp/%p%i
-              ExecStop=-/bin/rm -v ${KAFKA_CONF}/hosts
-              Restart=always
-              RestartSec=30s
-              TimeoutStartSec=2min
-
-              [X-Fleet]
-              MachineMetadata="role=worker" "state=statefull"
-              Conflicts=kafka@*
-              MachineOf=kafka-confd@%i.service
-
-          - path: /etc/systemd/system/kafka-sidekick@.service
-            permissions: 0644
-            content: |
-              [Unit]
-              Description=Sidekick for Kafka
-
-              Requires=fleet.service
-              After=fleet.service
-
-              [Service]
-              SyslogIdentifier=kafka%i
-              Environment=SKYDNS=/skydns/local/skydns
-              ExecStartPre=-/usr/bin/etcdctl rm ${SKYDNS}/kafka/kafka%i
-              ExecStartPre=/bin/ls -sl /tmp/kafka%i
-              ExecStart=/opt/bin/rkt-sidekick kafka %i
-              ExecStop=-/usr/bin/etcdctl rm ${SKYDNS}/kafka/kafka%i
-              Restart=always
-              RestartSec=10s
-
-              [X-Fleet]
-              MachineOf=kafka@%i.service
-
-          - path: /etc/systemd/system/kafka-confd@.service
-            permissions: 0644
-            content: |
-              [Unit]
-              Description=Confd for Kafka
-
-              Requires=fleet.service
-              After=fleet.service
-
-              [Service]
-              SyslogIdentifier=kafka%i
-              WorkingDirectory=/etc/systemd/system/
-              Environment=HOSTNAME=kafka%i
-              Environment=UNIT=kafka@%i.service
-              Environment=INSTANCE=%i
-              Environment=KAFKA_CONF=/var/lib/kafka/conf
-              ExecStartPre=/bin/mkdir -pv ${KAFKA_CONF}
-              ExecStartPre=/usr/bin/etcdctl ls /skydns/local/skydns/zookeeper
-              ExecStartPre=/usr/bin/fleetctl load kafka@%i.service
-              ExecStart=/usr/bin/confd -confdir=/etc/kafka/conf -node http://127.0.0.1:2379 -watch=true
-              Restart=always
-              RestartSec=30s
-
-              [X-Fleet]
-              MachineMetadata="role=worker" "state=statefull"
-              Conflicts=kafka-confd@*
-
-          - path: /etc/systemd/system/fleet-kafka@.service
-            permissions: 0644
-            content: |
-              [Unit]
-              Description=Fleeter for Kafka over Confd
-
-              Requires=fleet.service
-              After=fleet.service
-
-              [Service]
-              SyslogIdentifier=%p
-              WorkingDirectory=/etc/systemd/system/
-              ExecStartPre=/usr/bin/fleetctl list-machines
-              ExecStartPre=/usr/bin/fleetctl list-units
-              ExecStart=/usr/bin/fleetctl start kafka-confd@%i.service
-              ExecStartPost=/usr/bin/fleetctl start kafka-sidekick@%i.service
-              Restart=on-failure
-              RestartSec=10s
-
-          - path: /var/lib/kafka/server.properties
-            permissions: 0644
-
-          - path: /etc/kafka/conf/conf.d/kafka.toml
-            permissions: 0644
-            content: |
-              [template]
-              src = "kafka.tmpl"
-              dest = "/var/lib/kafka/conf/server.properties"
-              keys = ["/skydns/local/skydns/zookeeper"]
-              owner = "root"
-              mode = "0644"
-              reload_cmd = "systemctl restart $UNIT"
-
-          - path: /etc/kafka/conf/templates/kafka.tmpl
-            permissions: 0644
-            content: |
-              hostname={{getenv "HOSTNAME"}}
-              advertised.host.name={{getenv "HOSTNAME"}}
-              broker.id={{getenv "INSTANCE"}}
-              advertised.port=9092
-              log.dirs=/tmp/kafka-logs
-              log.retention.check.interval.ms=300000
-              log.retention.hours=168
-              log.segment.bytes=1073741824
-              num.io.threads=8
-              num.network.threads=3
-              num.partitions=1
-              num.recovery.threads.per.data.dir=1
-              socket.receive.buffer.bytes=102400
-              socket.request.max.bytes=104857600
-              socket.send.buffer.bytes=102400
-              zookeeper.connect={{range gets "/skydns/local/skydns/zookeeper/*" }}{{$data := json .Value}}{{$data.host}}:2181,{{end}}
-              zookeeper.connection.timeout.ms=6000
-
-          - path: /opt/bin/rkt-sidekick
-            permissions: 0755
-            content: |
-              #! /usr/bin/env bash
-
-              set -e
-
-              if [ -z $1 ]
-              then
-                echo 'give /tmp/basename_number as $1 == basename/prefix'
-              fi
-
-              if [ -z $2 ]
-              then
-                echo 'give /tmp/basename_number as $2 == number/instance'
-              fi
-
-              while true
-              do
-                UUID=$(cat /tmp/$1$2)
-                STATUS=$(rkt status $UUID)
-                IP=$(echo $STATUS | grep -Eo '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}')
-                etcdctl set --ttl 60 /skydns/local/skydns/$1/${1}${2} "{\"host\": \"${IP}\"}"
-                sleep 30
-              done
-
-          - path: /etc/systemd/system/jds_kafka.service
-            permissions: 0644
-            content: |
-              [Unit]
-              Description=Kafka producer
-
-              Requires=fleet.service skydns.service flannel.service
-              After=fleet.service skydns.service flannel.service
-
-              [Service]
-              SyslogIdentifier=%p
-              EnvironmentFile=/etc/aci_url
-              EnvironmentFile=/etc/network-environment
-              Environment=DB_FOLDER=/var/lib/jds
-              Environment=SINCE_DB=/var/lib/jds/sincedb
-              Environment=DNS_SEARCH=kafka.skydns.local
-              ExecStartPre=-/usr/bin/rkt gc --grace-period=0s quay.io/julienbalestra/%p
-              ExecStartPre=/usr/bin/etcdctl ls /skydns/local/skydns/kafka
-              ExecStartPre=/usr/bin/curl -Ifk ${ACI_URL}/%p.aci
-              ExecStartPre=-/bin/rm -v /tmp/%p%i
-              ExecStartPre=/bin/mkdir -vp $DB_FOLDER
-              ExecStartPre=-/bin/cat -e $SINCE_DB
-              ExecStartPre=/usr/bin/rkt --insecure-options=all fetch ${ACI_URL}/%p.aci
-              ExecStart=/usr/bin/rkt run --net=host --dns=${DEFAULT_IPV4} --dns-search=${DNS_SEARCH} \
-                --uuid-file-save=/tmp/%p%i \
-                --volume journal,kind=host,source=/run/log/journal \
-                --volume sincedb,kind=host,source=${DB_FOLDER} \
-                --set-env=SINCEDB=${SINCE_DB} \
-                --set-env=DNS_SEARCH=${DNS_SEARCH} \
-                quay.io/julienbalestra/%p \
-                --mount volume=journal,target=/run/log/journal \
-                --mount volume=sincedb,target=${DB_FOLDER}
-
-              ExecStop=-/bin/rm -v /tmp/%p%i
-              Restart=always
-              RestartSec=30s
-              TimeoutStartSec=10min
 
           - path: /etc/systemd/system/logstash@.service
             permissions: 0644
@@ -504,79 +238,6 @@ resources:
                 }
               }
 
-          - path: /etc/systemd/system/elasticsearch@.service
-            permissions: 0644
-            content: |
-              [Unit]
-              Description=Elasticsearch
-
-              Requires=fleet.service skydns.service flannel.service
-              After=fleet.service skydns.service flannel.service
-
-              [Service]
-              SyslogIdentifier=%p
-              EnvironmentFile=/etc/aci_url
-              Environment=ES_DATA=/var/lib/elasticsearch/data
-              ExecStartPre=/usr/bin/curl -Ifk ${ACI_URL}/%p.aci
-              ExecStartPre=-/bin/rm -v /tmp/%p%i
-              ExecStartPre=/bin/mkdir -pv $ES_DATA
-              ExecStartPre=/usr/bin/rkt --insecure-options=all fetch ${ACI_URL}/%p.aci
-              ExecStart=/usr/bin/rkt run \
-                --uuid-file-save=/tmp/%p%i \
-                --hostname=%p%i \
-                --volume volume-usr-share-elasticsearch-data,kind=host,source=${ES_DATA} \
-                %p
-              ExecStop=-/bin/rm -v /tmp/%p%i
-              Restart=always
-              RestartSec=30s
-              TimeoutStartSec=10min
-
-              [X-Fleet]
-              MachineMetadata="role=worker" "state=statefull"
-              Conflicts=elasticsearch@*
-
-          - path: /etc/systemd/system/fleet-elasticsearch@.service
-            permissions: 0644
-            content: |
-              [Unit]
-              Description=Fleeter for elasticsearch
-
-              Requires=fleet.service
-              After=fleet.service
-
-              [Service]
-              SyslogIdentifier=%p
-              WorkingDirectory=/etc/systemd/system/
-              ExecStartPre=/usr/bin/fleetctl list-machines
-              ExecStartPre=/usr/bin/fleetctl list-units
-              ExecStart=/usr/bin/fleetctl start elasticsearch@%i.service
-              ExecStartPost=/usr/bin/fleetctl start elasticsearch-sidekick@%i.service
-              Restart=on-failure
-              RestartSec=30s
-
-          - path: /etc/systemd/system/elasticsearch-sidekick@.service
-            permissions: 0644
-            content: |
-              [Unit]
-              Description=Sidekick for elasticsearch
-
-              Requires=fleet.service
-              After=fleet.service
-
-              [Service]
-              SyslogIdentifier=%p
-              Environment=SKYDNS=/skydns/local/skydns
-              ExecStartPre=/bin/ls -sl /tmp/elasticsearch%i
-              ExecStartPre=-/usr/bin/etcdctl rm ${SKYDNS}/elasticsearch/elasticsearch%i
-              ExecStart=/opt/bin/rkt-sidekick elasticsearch %i
-              ExecStop=-/usr/bin/etcdctl rm ${SKYDNS}/elasticsearch/elasticsearch%i
-              Restart=always
-              RestartSec=10s
-              TimeoutStartSec=10min
-
-              [X-Fleet]
-              MachineOf=elasticsearch@%i.service
-
           - path: /etc/systemd/system/kibana@.service
             permissions: 0644
             content: |
@@ -597,11 +258,8 @@ resources:
               ExecStartPre=/usr/bin/rkt --insecure-options=all fetch ${ACI_URL}/%p.aci
               ExecStartPre=-/usr/bin/rkt gc --grace-period=0s %p
 
-              ExecStartPre=/usr/bin/etcdctl set /traefik/backends/%p/servers/server%i/weight '1'
-              ExecStartPre=/usr/bin/etcdctl set /traefik/backends/%p/servers/server%i/url \
-                "http://%p%i.%p.skydns.local:5601"
               ExecStartPre=/usr/bin/etcdctl set /traefik/frontends/%p/backend "%p"
-              ExecStartPre=/usr/bin/etcdctl set /traefik/frontends/%p/routes/%p/rule 'PathPrefix:/'
+              ExecStartPre=/usr/bin/etcdctl set /traefik/frontends/${1}/routes/${1}/rule 'PathPrefix:/'
 
               ExecStart=/usr/bin/rkt run \
                 --set-env=TINI_SUBREAPER=true \
@@ -613,10 +271,6 @@ resources:
                 --mount volume=conf,target=/opt/kibana/config
 
               ExecStop=-/bin/rm -v /tmp/%p%i
-
-              ExecStop=-/usr/bin/etcdctl rm /traefik/backends/%p/servers/server%i/weight
-              ExecStop=-/usr/bin/etcdctl rm /traefik/backends/%p/servers/server%i/url
-
               Restart=always
               RestartSec=30s
               TimeoutStartSec=10min
@@ -625,7 +279,7 @@ resources:
               MachineMetadata="role=worker" "state=stateless"
               Conflicts=kibana@*
 
-          - path: /etc/systemd/system/traefik@.service
+          - path: /etc/traefik/traefik.toml
             permissions: 0644
             content: |
               [etcd]
@@ -636,11 +290,11 @@ resources:
               [web]
               address = ":443"
 
-          - path: /etc/systemd/system/traefik@.service
+          - path: /etc/systemd/system/traefik.service
             permissions: 0644
             content: |
               [Unit]
-              Description=Traefik RP
+              Description=Traefik
 
               Requires=fleet.service skydns.service flannel.service
               After=fleet.service skydns.service flannel.service
@@ -648,7 +302,7 @@ resources:
               [Service]
               SyslogIdentifier=%p
               EnvironmentFile=/etc/aci_url
-              Environment=TRAEFIK_CONF=/var/lib/traefik
+              Environment=TRAEFIK_CONF=/etc/traefik/
               ExecStartPre=/usr/bin/curl -Ifk ${ACI_URL}/%p.aci
               ExecStartPre=-/bin/rm -v /tmp/%p%i
               ExecStartPre=/bin/mkdir -pv $TRAEFIK_CONF
@@ -722,6 +376,7 @@ resources:
               [Service]
               SyslogIdentifier=%p
               Environment=SKYDNS=/skydns/local/skydns
+              Environment=TRAEFIK_BACKEND_PORT=5601
               ExecStartPre=/bin/ls -sl /tmp/kibana%i
               ExecStartPre=-/usr/bin/etcdctl rm ${SKYDNS}/kibana/kibana%i
               ExecStart=/opt/bin/rkt-sidekick kibana %i
@@ -790,6 +445,7 @@ resources:
           - systemctl enable fleet.service
           - systemctl enable skydns.service
           - systemctl enable jds_kafka.service
+          - systemctl enable traefik.service
 
           - systemctl start setup-etcd2-environment.service
           - systemctl start etcd2.service
@@ -801,17 +457,13 @@ resources:
 
           - systemctl start skydns.service
 
-
-          - ["systemctl", "start", "fleet-elasticsearch@0.service"]
-          - ["systemctl", "start", "fleet-zookeeper@0.service"]
-          - ["systemctl", "start", "fleet-kafka@0.service"]
           - ["systemctl", "start", "fleet-logstash@0.service"]
 
           - systemctl start jds_kafka.service
 
           - ["systemctl", "start", "fleet-kibana@0.service"]
-          - ["systemctl", "start", "fleet-traefik@0.service"]
-          - ["systemctl", "start", "fleet-traefik@1.service"]
+
+          - systemctl start traefik.service
 
         final_message: "The system is finally up, after $UPTIME seconds"
 
@@ -851,3 +503,8 @@ parameters:
   etcd_initial_cluster:
     type: string
     description: "static0=http://192.168.1.10:2380,static1=http://192.168.1.11:2380,static2=http://192.168.1.12:2380"
+
+  floatingip_network_name:
+    type: string
+    label: The Floating IP network for NAT
+    description: floatingip_network_name=public
