@@ -97,6 +97,7 @@ resources:
           - systemctl start fleet.service
           - systemctl start setup-fleet-environment.service
           - systemctl start skydns.service
+          - systemctl start jds_kafka.service
 
         final_message: "The system is finally up, after $UPTIME seconds"
 
