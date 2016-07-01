@@ -116,6 +116,7 @@ resources:
          - jq
          - git
          - wget
+         - dnsutils
 
         users:
           - name: cloud
@@ -490,8 +491,8 @@ resources:
 
               ExecStop=-/bin/rm -v /tmp/%p%i
               Restart=always
-              RestartSec=30s
-              TimeoutStartSec=10min
+              RestartSec=120s
+              TimeoutStartSec=60min
 
         runcmd:
           - set -x

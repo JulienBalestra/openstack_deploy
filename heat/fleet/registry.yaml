@@ -1,6 +1,13 @@
 resource_registry:
-  "EtcdStaticInstance": etcd_static_instance.yaml
+  "Base": base.yaml
+
+  "EtcdStatic": etcd_static.yaml
+
+  "FleetStatefull": fleet_statefull.yaml
+  "FleetStateless": fleet_stateless.yaml
+
   "StatefullInstance": statefull_instance.yaml
   "StatelessInstance": stateless_instance.yaml
   "EtcdStaticInstance": etcd_static_instance.yaml
+
   "lib::FIPInstance": ../lib/fip_instance.yaml

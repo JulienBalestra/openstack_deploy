@@ -21,17 +21,21 @@
 - etcd2 - https://github.com/coreos/etcd/releases
 - flannel - docker://quay.io/coreos/flannel
 
+- ACI_URL - bucket to store aci
+
 
 
 ### Run the Fleet instance
 
 **http://endpoint/aci**:
-- elasticsearch
-- jds_kafka
-- kafka
-- logstash
-- skydns
-- zookeeper
+- elasticsearch.aci
+- jds_kafka.aci
+- kafka.aci
+- kibana.aci
+- logstash.aci
+- skydns.aci
+- traefik.aci
+- zookeeper.aci
 
 
 ### Convert Docker to ACI

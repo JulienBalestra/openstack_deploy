@@ -198,6 +198,7 @@ resources:
               WorkingDirectory=/etc/systemd/system/
               Environment=UNIT=logstash@%i.service
               Environment=LOGSTASH_CONF=/var/lib/logstash
+              Environment=HOSTNAME=logstash%i
               ExecStartPre=/bin/mkdir -pv ${LOGSTASH_CONF}
               ExecStartPre=/usr/bin/etcdctl ls /skydns/local/skydns/zookeeper
               ExecStartPre=/usr/bin/fleetctl load logstash@%i.service
@@ -227,9 +228,11 @@ resources:
             content: |
               input {
                 kafka {
+                  client_id => '{{getenv "HOSTNAME"}}'
                   topics => 'logs'
                   bootstrap_servers => '{{range gets "/skydns/local/skydns/kafka/*" }}{{$data := json .Value}}{{$data.host}}:9092{{end}}'
                   codec => json
+                  auto_offset_reset => earliest
                 }
               }
               output {

@@ -37,7 +37,10 @@ go_to_dirname
  confd_bin \
  rkt_tar \
  ssh_authorized_keys \
- aci_url
+ aci_url \
+ docker_tar \
+ netenv_bin \
+ flannel_tar
 
 ../../scripts/heat_tools/stack_integrity.py \
 -v True \
@@ -59,5 +62,30 @@ go_to_dirname
  image \
  dns_nameservers \
  router \
+ etcd_initial_cluster \
+ floatingip_network_name
+
+../../scripts/heat_tools/stack_integrity.py \
+-v True \
+-f fleet_statefull.yaml \
+-r registry.yaml \
+-P key_name \
+ flavor \
+ image \
+ dns_nameservers \
+ router \
  etcd_initial_cluster
+
+../../scripts/heat_tools/stack_integrity.py \
+-v True \
+-f all.yaml \
+-r registry.yaml \
+-P key_name \
+ flavor \
+ image \
+ dns_nameservers \
+ flavor_static \
+ flavor_stateless \
+ flavor_statefull \
+ floatingip_network_name
 
