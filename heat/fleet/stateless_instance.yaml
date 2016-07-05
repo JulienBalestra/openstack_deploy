@@ -235,6 +235,16 @@ resources:
                   auto_offset_reset => earliest
                 }
               }
+              filter {
+                mutate {
+                  gsub => [ "realtime_timestamp", ".{3}$", "" ]
+                }
+              date {
+                match => [ "realtime_timestamp", "UNIX_MS" ]
+                timezone => "Europe/Paris"
+                target => "logTimestamp"
+                }
+              }
               output {
                 elasticsearch {
                   hosts => '{{range gets "/skydns/local/skydns/elasticsearch/*" }}{{$data := json .Value}}{{$data.host}}:9200{{end}}'
@@ -262,7 +272,7 @@ resources:
               ExecStartPre=-/usr/bin/rkt gc --grace-period=0s %p
 
               ExecStartPre=/usr/bin/etcdctl set /traefik/frontends/%p/backend "%p"
-              ExecStartPre=/usr/bin/etcdctl set /traefik/frontends/${1}/routes/${1}/rule 'PathPrefix:/'
+              ExecStartPre=/usr/bin/etcdctl set /traefik/frontends/%p/routes/%p/rule 'PathPrefix:/'
 
               ExecStart=/usr/bin/rkt run \
                 --set-env=TINI_SUBREAPER=true \

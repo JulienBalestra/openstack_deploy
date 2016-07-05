@@ -114,8 +114,6 @@ resources:
         packages:
          - curl
          - jq
-         - git
-         - wget
          - dnsutils
 
         users:
@@ -401,6 +399,18 @@ resources:
               [Install]
               WantedBy=sockets.target
 
+          - path: /etc/systemd/system/rkt-api.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Requires=network.target
+
+              [Service]
+              ExecStart=/usr/bin/rkt api-service --listen="localhost:15441"
+
+              [Install]
+              WantedBy=multi-user.target
+
           - path: /etc/rkt/net.d/10-flannel.conf
             permissions: 0644
             content: |
@@ -507,6 +517,7 @@ resources:
           - mv -v /tmp/docker_install/docker-containerd-ctr /usr/bin/docker-containerd-ctr
           - mv -v /tmp/docker_install/docker-containerd-shim /usr/bin/docker-containerd-shim
           - mv -v /tmp/docker_install/docker-runc /usr/bin/docker-runc
+          - rm -Rf /tmp/docker_install
 
           - systemctl daemon-reload
           - systemctl enable docker.socket
@@ -566,6 +577,7 @@ resources:
           - systemctl daemon-reload
           - systemctl enable rkt-metadata.service
           - systemctl enable rkt-metadata.socket
+          - systemctl enable rkt-api.service
           - systemctl enable rkt-gc.timer
 
           - mkdir -pv /opt/bin/
@@ -573,6 +585,23 @@ resources:
           - chmod +x /opt/bin/setup-network-environment
           - systemctl enable setup-network-environment.timer
           - systemctl enable setup-network-environment.service
+
+          - mkdir -p /tmp/kubernetes_install
+          - cd -P /tmp/kubernetes_install
+          - [curl, -L, {get_param: insecure}, {get_param: kubernetes_tar}, -o, /tmp/kubernetes_install/kubernetes.tar.gz]
+          - tar -xzvf /tmp/kubernetes_install/kubernetes.tar.gz --strip-components=1
+          - mv /tmp/kubernetes_install/server/bin/federation-apiserver /usr/bin/federation-apiserver
+          - mv /tmp/kubernetes_install/server/bin/federation-controller-manager /usr/bin/federation-controller-manager
+          - mv /tmp/kubernetes_install/server/bin/hyperkube /usr/bin/hyperkube
+          - mv /tmp/kubernetes_install/server/bin/kube-apiserver /usr/bin/kube-apiserver
+          - mv /tmp/kubernetes_install/server/bin/kube-controller-manager /usr/bin/kube-controller-manager
+          - mv /tmp/kubernetes_install/server/bin/kube-dns /usr/bin/kube-dns
+          - mv /tmp/kubernetes_install/server/bin/kube-proxy /usr/bin/kube-proxy
+          - mv /tmp/kubernetes_install/server/bin/kube-scheduler /usr/bin/kube-scheduler
+          - mv /tmp/kubernetes_install/server/bin/kubectl /usr/bin/kubectl
+          - mv /tmp/kubernetes_install/server/bin/kubelet /usr/bin/kubelet
+          - mv /tmp/kubernetes_install/server/bin/kubemark /usr/bin/kubemark
+          - rm -Rf /tmp/kubernetes_install
 
           - rm -v /etc/machine-id ; rm -v /var/lib/dbus/machine-id
           - touch /etc/machine-id ; touch /var/lib/dbus/machine-id
@@ -688,6 +717,9 @@ parameters:
   netenv_bin:
     type: string
     description: "https://object-store.api/v1/AUTH_token/netenv/setup-network-environment"
+
+  kubernetes_tar:
+    type: string
 
   ssh_authorized_keys:
     type: comma_delimited_list
