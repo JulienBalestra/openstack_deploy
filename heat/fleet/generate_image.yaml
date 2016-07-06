@@ -123,21 +123,6 @@ resources:
             shell: /bin/bash
             ssh_authorized_keys: { get_param: ssh_authorized_keys }
 
-          - name: etcd
-            shell: /usr/sbin/nologin
-            groups:
-              - etcd
-
-          - name: fleet
-            shell: /usr/sbin/nologin
-            groups:
-              - fleet
-
-          - name: rkt
-            shell: /usr/sbin/nologin
-            groups:
-              - rkt
-
         write_files:
           - path: /etc/etcd2-environment
             permissions: 0644
@@ -185,7 +170,6 @@ resources:
 
               [Service]
               SyslogIdentifier=%p
-              User=etcd
               ExecStart=/opt/bin/setup-etcd2-environment
               RemainAfterExit=yes
               Type=oneshot
@@ -203,7 +187,6 @@ resources:
 
               [Service]
               SyslogIdentifier=%p
-              User=fleet
               ExecStart=/opt/bin/setup-fleet-environment
               RemainAfterExit=yes
               Type=oneshot
@@ -223,7 +206,6 @@ resources:
 
               [Service]
               SyslogIdentifier=%p
-              User=etcd
               Environment=ETCD_DATA_DIR=/var/lib/etcd2
               Environment=ETCD_NAME=%m
               EnvironmentFile=/etc/etcd2-environment
@@ -248,8 +230,7 @@ resources:
               [Socket]
               ListenStream=/var/run/fleet.sock
               SocketMode=0660
-              SocketUser=fleet
-              SocketGroup=fleet
+              SocketUser=root
 
               [Install]
               WantedBy=multi-user.target
@@ -423,6 +404,14 @@ resources:
                   }
               }
 
+          - path: /etc/update-motd.d/20-usage
+            permissions: 0655
+            content: |
+              #! /bin/sh
+
+              LINE="--------"
+              printf "\n${LINE}\n uptime:\n$(uptime)\n${LINE}\n"
+
           - path: /etc/aci_url
             permissions: 0644
             content:
@@ -431,6 +420,18 @@ resources:
                   ACI_URL=__aci_url__
                 params:
                   __aci_url__: { get_param: aci_url }
+
+          - path: /etc/systemd/timesyncd.conf
+            permissions: 0644
+            content:
+              str_replace:
+                template: |
+                  [Time]
+                  NTP=__ntp__
+                  FallbackNTP=__ntpfall__
+                params:
+                  __ntp__: { get_param: ntp }
+                  __ntpfall__: { get_param: ntpfall }
 
           - path: /opt/bin/rkt-sidekick
             permissions: 0755
@@ -524,16 +525,13 @@ resources:
           - systemctl enable docker.service
           - systemctl start docker.service
 
-          - chown etcd:etcd /etc/etcd2-environment
-          - chown fleet:fleet /etc/fleet-environment
-
           - mkdir -v /tmp/etcd_install
           - [curl, -L, {get_param: insecure}, {get_param: etcd_tar}, -o, /tmp/etcd_install/etcd.tar.gz]
           - [cd, -P, /tmp/etcd_install]
           - [tar, -xzvf, /tmp/etcd_install/etcd.tar.gz, --strip-components=1]
           - [mv, /tmp/etcd_install/etcd, /usr/bin/etcd]
           - [mv, /tmp/etcd_install/etcdctl, /usr/bin/etcdctl]
-          - mkdir -p /var/lib/etcd2 && chown -R etcd:etcd /var/lib/etcd2
+          - mkdir -p /var/lib/etcd2
           - etcd --version
           - etcdctl --version
           - rm -Rf /tmp/etcd_install
@@ -550,7 +548,7 @@ resources:
 
           - mkdir -v /tmp/rkt_install
           - mkdir -pv /usr/lib/rkt/stage1-images
-          - chown -R rkt:rkt /usr/lib/rkt/
+
           - [curl, -L, {get_param: insecure}, {get_param: rkt_tar}, -o, /tmp/rkt_install/rkt.tar.gz]
           - [cd, -P, /tmp/rkt_install]
           - [tar, -xzvf, /tmp/rkt_install/rkt.tar.gz, --strip-components=1]
@@ -605,16 +603,44 @@ resources:
 
           - rm -v /etc/machine-id ; rm -v /var/lib/dbus/machine-id
           - touch /etc/machine-id ; touch /var/lib/dbus/machine-id
+          - journalctl --sync
+          - journalctl --flush
+          - journalctl --rotate
+          - journalctl --vacuum-size 1B
+          - truncate -s 0 /var/log/syslog
+          - truncate -s 0 /var/log/*.log
+          - truncate -s 0 /var/log/**/*.log
+          - echo runcmd_OK
 
         final_message: "The system is finally up, after $UPTIME seconds. Shutting down for image building"
         power_state:
           delay: "+1"
-          timeout: 30
+          timeout: 60
           mode: poweroff
           message: Shutdown for snapshot
           condition: True
 
+        apt_proxy: {get_param: apt_proxy}
+        timezone: {get_param: timezone}
+
+
 parameters:
+  timezone:
+    type: string
+    default: "Europe/Paris"
+
+  ntp:
+    type: string
+    default: "ntp.ubuntu.com"
+
+  ntpfall:
+    type: string
+    default: "ntp.ubuntu.com"
+
+  apt_proxy:
+    type: string
+    default: ""
+
   context:
     type: string
     default: ""
