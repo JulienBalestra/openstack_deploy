@@ -58,11 +58,6 @@ resources:
           port_range_max: 443
           direction: ingress
         - remote_ip_prefix: 0.0.0.0/0
-          protocol: tcp
-          port_range_min: 6443
-          port_range_max: 6443
-          direction: ingress
-        - remote_ip_prefix: 0.0.0.0/0
           protocol: udp
           port_range_min: 8472
           port_range_max: 8472
@@ -95,7 +90,7 @@ resources:
       desired_capacity: { get_param: size }
       max_size: 20
       resource:
-        type: "KubeMasterInstance"
+        type: "KubeNodeInstance"
         properties:
           floatingip_network_name: { get_param: floatingip_network_name }
           anti_affinity: { get_resource: kubemaster_anti }
@@ -103,11 +98,11 @@ resources:
           security_group: { get_resource: securitygroup }
           network: { get_resource: kubemaster_network }
           subnet: { get_resource: kubemaster_subnet }
-          instance_basename: "kube-master"
+          instance_basename: "kube-node"
           flavor: { get_param: flavor }
           image: { get_param: image }
           etcd_initial_cluster: { get_param: etcd_initial_cluster }
-          fleet_state: "master"
+          fleet_state: "node"
 
   scale_up:
     depends_on: [ kubemaster_group ]
@@ -137,35 +132,35 @@ parameters:
 
   kubemaster_subnet_cidr:
     type: string
-    default: "192.168.4.0/24"
+    default: "192.168.5.0/24"
     constraints:
       - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}/[0-9]{1,2}"
         description: Must be a CIDR like 192.168.1.0/24
 
   kubemaster_subnet_start:
     type: string
-    default: "192.168.4.100"
+    default: "192.168.5.100"
     constraints:
       - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}"
         description: Must be a valid IP address like 192.168.1.200
 
   kubemaster_subnet_end:
     type: string
-    default: "192.168.4.200"
+    default: "192.168.5.200"
     constraints:
       - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}"
         description: Must be a valid IP address like 192.168.1.200
 
   kubemaster_gateway_ip:
     type: string
-    default: "192.168.4.254"
+    default: "192.168.5.254"
     constraints:
       - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}"
         description: Must be a valid IP address like 192.168.1.200
 
   kubemaster_gateway_ip:
     type: string
-    default: "192.168.4.254"
+    default: "192.168.5.254"
     constraints:
       - allowed_pattern: "[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}"
         description: Must be a valid IP address like 192.168.1.200
@@ -199,7 +194,7 @@ parameters:
 
   size:
     type: number
-    default: 3
+    default: 2
 
   floatingip_network_name:
     type: string

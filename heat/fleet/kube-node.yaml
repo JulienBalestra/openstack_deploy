@@ -102,137 +102,95 @@ resources:
                 etcdctl cluster-health && break
               done
 
-          - path: /etc/systemd/system/kube-apiserver.service
+          - path: /etc/kubernetes/conf/conf.d/kubelet.toml
+            permissions: 0644
+            content: |
+              [template]
+              src = "kubelet.tmpl"
+              dest = "/etc/kubemaster"
+              keys = ["/registry/services/endpoints/default/kubernetes"]
+              owner = "root"
+              mode = "0644"
+
+          - path: /etc/kubernetes/conf/templates/kubelet.tmpl
+            permissions: 0644
+            content: |
+              KUBE_MASTER_ENDPOINT={{$data := json (getv "/registry/services/endpoints/default/kubernetes")}}{{range $data.subsets}}{{getenv "PROTOCOL"}}://{{range .addresses}}{{.ip}}:{{getenv "PORT"}},{{end}}{{end}}
+
+          - path: /etc/systemd/system/kubelet-confd.service
             permissions: 0644
             content: |
               [Unit]
-              Description=Kubernetes api server on port 8080
+              Description=Kubelet confd
 
               After=flanneld.service etcd.service fleet.service
               Requires=flanneld.service etcd.service fleet.service
 
               [Service]
+              # TODO use a secure endpoint
+              Environment=PORT=8080
+              Environment=PROTOCOL=http
+
+              Environment=UNIT=kubelet.service
+              ExecStart=/usr/bin/confd -onetime -confdir=/etc/kubernetes/conf
+              Type=oneshot
+
+              [Install]
+              WantedBy=multi-user.target
+
+          - path: /etc/systemd/system/kubelet.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=Kubelet
+
+              After=flanneld.service etcd.service fleet.service kubelet-confd.service
+              Requires=flanneld.service etcd.service fleet.service kubelet-confd.service
+
+              [Service]
               EnvironmentFile=/etc/network-environment
               EnvironmentFile=/run/flannel/subnet.env
 
-              ExecStart=/usr/bin/kube-apiserver \
-                --bind-address=0.0.0.0 \
-                --insecure-bind-address=0.0.0.0 \
-                --etcd-servers=http://127.0.0.1:2379 \
+              EnvironmentFile=/etc/kubemaster
+
+              ExecStart=/usr/bin/kubelet \
                 --allow-privileged=true \
-                --service-cluster-ip-range=${FLANNEL_SUBNET} \
-                --advertise-address=${DEFAULT_IPV4} \
-                --admission-control=NamespaceLifecycle,LimitRanger,SecurityContextDeny,ServiceAccount,ResourceQuota \
-                --enable-swagger-ui=true \
-                --apiserver-count=3 \
+                --api-servers=${KUBE_MASTER_ENDPOINT} \
+                --cloud-provider="" \
+                --cluster-dns=${DEFAULT_IPV4} \
+                --cluster-domain=skydns.local \
+                --container-runtime=rkt \
                 --v=2
 
               Restart=always
-              RestartSec=10
+              RestartSec=30
 
               [Install]
               WantedBy=multi-user.target
 
-          - path: /etc/systemd/system/kube-controller-manager.service
+          - path: /etc/systemd/system/kube-proxy.service
             permissions: 0644
             content: |
               [Unit]
-              Description=Kubernetes controller manager
+              Description=Kubernetes proxy
 
-              After=kube-apiserver.service
-              Requires=kube-apiserver.service
+              After=kubelet-confd.service
+              Requires=kubelet-confd.service
 
               [Service]
               EnvironmentFile=/etc/network-environment
               EnvironmentFile=/run/flannel/subnet.env
 
-              ExecStart=/usr/bin/kube-controller-manager \
-                --master=http://${DEFAULT_IPV4}:8080 \
-                --leader-elect=true \
-                --service-cluster-ip-range=${FLANNEL_SUBNET} \
+              EnvironmentFile=/etc/kubemaster
+
+              ExecStart=/usr/bin/kube-proxy \
+                --master=${KUBE_MASTER_ENDPOINT} \
+                --kubeconfig=/var/lib/kubelet/kubeconfig \
+                --proxy-mode=iptables \
                 --v=2
 
               Restart=always
               RestartSec=10
-
-              [Install]
-              WantedBy=multi-user.target
-
-          - path: /etc/systemd/system/kube-scheduler.service
-            permissions: 0644
-            content: |
-              [Unit]
-              Description=Kubernetes scheduler
-
-              After=kube-apiserver.service
-              Requires=kube-apiserver.service
-
-              [Service]
-              EnvironmentFile=/etc/network-environment
-
-              ExecStart=/usr/bin/kube-scheduler \
-                --master=http://${DEFAULT_IPV4}:8080 \
-                --leader-elect=true \
-                --v=2
-
-              Restart=always
-              RestartSec=10
-
-              [Install]
-              WantedBy=multi-user.target
-
-          - path: /etc/traefik/traefik.toml
-            permissions: 0644
-            content: |
-              [web]
-              address = ":443"
-
-              [file]
-              [backends]
-                [backends.backend1]
-                  [backends.backend1.circuitbreaker]
-                    expression = "NetworkErrorRatio() > 0.5"
-                  [backends.backend1.servers.server1]
-                  url = "http://127.0.0.1:8080"
-                  weight = 1
-
-              [frontends]
-                [frontends.frontend1]
-                backend = "backend1"
-                [frontends.frontend1.routes.rule]
-                rule = "PathPrefix:/"
-
-          - path: /etc/systemd/system/traefik.service
-            permissions: 0644
-            content: |
-              [Unit]
-              Description=Traefik
-
-              Requires=fleet.service skydns.service flanneld.service
-              After=fleet.service skydns.service flanneld.service
-
-              [Service]
-              SyslogIdentifier=%p
-              EnvironmentFile=/etc/aci_url
-              Environment=TRAEFIK_CONF=/etc/traefik/
-              ExecStartPre=/usr/bin/curl -Ifk ${ACI_URL}/%p.aci
-              ExecStartPre=-/bin/rm -v /tmp/%p%i
-              ExecStartPre=/bin/mkdir -pv $TRAEFIK_CONF
-              ExecStartPre=/usr/bin/rkt --insecure-options=all fetch ${ACI_URL}/%p.aci
-              ExecStartPre=-/usr/bin/rkt gc --grace-period=0s %p
-              ExecStart=/usr/bin/rkt run \
-                --uuid-file-save=/tmp/%p%i \
-                --hostname=%p%i \
-                 --dns=127.0.0.1 \
-                 --net=host \
-                 --volume conf,kind=host,source=${TRAEFIK_CONF} \
-                %p \
-                --mount volume=conf,target=/etc/traefik
-
-              ExecStop=-/bin/rm -v /tmp/%p%i
-              Restart=always
-              RestartSec=30s
-              TimeoutStartSec=10min
 
               [Install]
               WantedBy=multi-user.target
@@ -251,24 +209,22 @@ resources:
           - systemctl enable fleet.service
           - systemctl enable skydns.service
           - systemctl enable jds_kafka.service
-
-          - systemctl start kube-apiserver.service
-          - systemctl start kube-scheduler.service
-          - systemctl start kube-controller-manager.service
           - systemctl enable traefik.service
 
           - systemctl start setup-etcd-environment.service
           - systemctl start etcd.service
+
           - systemctl start flanneld.service
+
           - systemctl start setup-fleet-environment.service
           - systemctl start fleet.service
+
           - systemctl start skydns.service
+
           - systemctl start jds_kafka.service
 
-          - systemctl start kube-apiserver.service
-          - systemctl start kube-scheduler.service
-          - systemctl start kube-controller-manager.service
-          - systemctl start traefik.service
+          - systemctl start kubelet.service
+          - systemctl start kube-proxy.service
 
         final_message: "The system is finally up, after $UPTIME seconds"
 
