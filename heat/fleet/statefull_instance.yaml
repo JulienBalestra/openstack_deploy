@@ -54,9 +54,10 @@ resources:
       cloud_config:
         preserve_hostname: false
         manage_etc_hosts: true
+        package_update: false
 
         write_files:
-          - path: /opt/bin/setup-etcd2-environment
+          - path: /opt/bin/setup-etcd-environment
             permissions: 0755
             content: |
               #!/usr/bin/env bash
@@ -65,7 +66,7 @@ resources:
 
               DEFAULT_IPV4=$(curl 169.254.169.254/1.0/meta-data/local-ipv4)
 
-              cat << EOF | tee /etc/etcd2-environment
+              cat << EOF | tee /etc/etcd-environment
               ETCD_PROXY="on"
               ETCD_INITIAL_CLUSTER="$(curl http://169.254.169.254/openstack/latest/meta_data.json |
                 jq -r -e .meta.etcd_initial_cluster)"
@@ -309,8 +310,8 @@ resources:
               [Unit]
               Description=Elasticsearch
 
-              Requires=fleet.service skydns.service flannel.service
-              After=fleet.service skydns.service flannel.service
+              Requires=fleet.service skydns.service flanneld.service
+              After=fleet.service skydns.service flanneld.service
 
               [Service]
               SyslogIdentifier=%p
@@ -382,19 +383,19 @@ resources:
           - cd /etc/systemd/system
 
           - systemctl daemon-reload
-          - systemctl enable setup-etcd2-environment.service
+          - systemctl enable setup-etcd-environment.service
           - systemctl enable setup-fleet-environment.service
-          - systemctl enable etcd2.service
-          - systemctl enable flannel.service
+          - systemctl enable etcd.service
+          - systemctl enable flanneld.service
           - systemctl enable fleet.socket
           - systemctl enable fleet.service
           - systemctl enable skydns.service
           - systemctl enable jds_kafka.service
 
-          - systemctl start setup-etcd2-environment.service
-          - systemctl start etcd2.service
+          - systemctl start setup-etcd-environment.service
+          - systemctl start etcd.service
 
-          - systemctl start flannel.service
+          - systemctl start flanneld.service
 
           - systemctl start setup-fleet-environment.service
           - systemctl start fleet.service
