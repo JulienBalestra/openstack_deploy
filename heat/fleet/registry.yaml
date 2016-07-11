@@ -6,7 +6,8 @@ resource_registry:
   "FleetStatefull": fleet_statefull.yaml
   "FleetStateless": fleet_stateless.yaml
 
-  "KubeMasterInstance": kubemaster_instance.yaml
+  "KubeMasterInstance": kube-master.yaml
+  "KubeNodeInstance": kube-node.yaml
 
   "StatefullInstance": statefull_instance.yaml
   "StatelessInstance": stateless_instance.yaml
