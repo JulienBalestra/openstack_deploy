@@ -124,7 +124,7 @@ resources:
             ssh_authorized_keys: { get_param: ssh_authorized_keys }
 
         write_files:
-          - path: /etc/etcd2-environment
+          - path: /etc/etcd-environment
             permissions: 0644
 
           - path: /etc/fleet-environment
@@ -133,7 +133,7 @@ resources:
           - path: /etc/network-environment
             permissions: 0644
 
-          - path: /opt/bin/setup-etcd2-environment
+          - path: /opt/bin/setup-etcd-environment
             permissions: 0755
             content: |
               #!/usr/bin/env bash
@@ -142,7 +142,7 @@ resources:
 
               DEFAULT_IPV4=$(curl 169.254.169.254/1.0/meta-data/local-ipv4)
 
-              cat << EOF | tee /etc/etcd2-environment
+              cat << EOF | tee /etc/etcd-environment
               # ETCD_FLAG=value
               EOF
 
@@ -157,11 +157,11 @@ resources:
               # FLEET_METADATA="key=value"
               EOF
 
-          - path: /etc/systemd/system/setup-etcd2-environment.service
+          - path: /etc/systemd/system/setup-etcd-environment.service
             permissions: 0644
             content: |
               [Unit]
-              Description=Setup etcd2 environment
+              Description=Setup etcd environment
 
               After=network.target
 
@@ -170,7 +170,7 @@ resources:
 
               [Service]
               SyslogIdentifier=%p
-              ExecStart=/opt/bin/setup-etcd2-environment
+              ExecStart=/opt/bin/setup-etcd-environment
               RemainAfterExit=yes
               Type=oneshot
 
@@ -194,21 +194,21 @@ resources:
               [Install]
               WantedBy=multi-user.target
 
-          - path: /etc/systemd/system/etcd2.service
+          - path: /etc/systemd/system/etcd.service
             permissions: 0644
             content: |
               [Unit]
-              Description=Etcd2
+              Description=etcd
               Conflicts=etcd.service
 
-              Requires=setup-etcd2-environment.service
-              After=setup-etcd2-environment.service
+              Requires=setup-etcd-environment.service
+              After=setup-etcd-environment.service
 
               [Service]
               SyslogIdentifier=%p
-              Environment=ETCD_DATA_DIR=/var/lib/etcd2
+              Environment=ETCD_DATA_DIR=/var/lib/etcd
               Environment=ETCD_NAME=%m
-              EnvironmentFile=/etc/etcd2-environment
+              EnvironmentFile=/etc/etcd-environment
               ExecStart=/usr/bin/etcd
               Type=notify
               Restart=always
@@ -241,8 +241,8 @@ resources:
               [Unit]
               Description=Fleet daemon
 
-              After=etcd2.service
-              After=flannel.service
+              After=etcd.service
+              After=flanneld.service
 
               Requires=setup-fleet-environment.service setup-network-environment
               After=setup-fleet-environment.service setup-network-environment
@@ -263,14 +263,14 @@ resources:
               [Install]
               WantedBy=multi-user.target
 
-          - path: /etc/systemd/system/flannel.service
+          - path: /etc/systemd/system/flanneld.service
             permissions: 0644
             content: |
               [Unit]
               Description=Flannel
 
-              Requires=etcd2.service
-              After=etcd2.service
+              Requires=etcd.service
+              After=etcd.service
 
               [Service]
               SyslogIdentifier=%p
@@ -295,8 +295,8 @@ resources:
               [Unit]
               Description=SkyDNS
 
-              Requires=etcd2.service setup-network-environment.service
-              After=etcd2.service setup-network-environment.service
+              Requires=etcd.service setup-network-environment.service
+              After=etcd.service setup-network-environment.service
 
               [Service]
               SyslogIdentifier=%p
@@ -380,18 +380,6 @@ resources:
               [Install]
               WantedBy=sockets.target
 
-          - path: /etc/systemd/system/rkt-api.service
-            permissions: 0644
-            content: |
-              [Unit]
-              Requires=network.target
-
-              [Service]
-              ExecStart=/usr/bin/rkt api-service --listen="localhost:15441"
-
-              [Install]
-              WantedBy=multi-user.target
-
           - path: /etc/rkt/net.d/10-flannel.conf
             permissions: 0644
             content: |
@@ -473,8 +461,8 @@ resources:
               [Unit]
               Description=Kafka producer
 
-              Requires=fleet.service skydns.service flannel.service
-              After=fleet.service skydns.service flannel.service
+              Requires=fleet.service skydns.service flanneld.service
+              After=fleet.service skydns.service flanneld.service
 
               [Service]
               SyslogIdentifier=%p
@@ -531,7 +519,7 @@ resources:
           - [tar, -xzvf, /tmp/etcd_install/etcd.tar.gz, --strip-components=1]
           - [mv, /tmp/etcd_install/etcd, /usr/bin/etcd]
           - [mv, /tmp/etcd_install/etcdctl, /usr/bin/etcdctl]
-          - mkdir -p /var/lib/etcd2
+          - mkdir -p /var/lib/etcd
           - etcd --version
           - etcdctl --version
           - rm -Rf /tmp/etcd_install
@@ -541,7 +529,7 @@ resources:
           - [cd, -P, /tmp/fleet_install]
           - [tar, -xzvf, /tmp/fleet_install/fleet.tar.gz, --strip-components=1]
           - [mv, /tmp/fleet_install/fleetd, /usr/bin/fleetd]
-          - [mv, /tmp/fleet_install/fleetctl, /usr/bin/fleetctl]
+          - mv /tmp/fleet_install/fleetctl /usr/bin/fleetctl
           - fleetd --version
           - fleetctl --version
           - rm -Rf /tmp/fleet_install
@@ -550,11 +538,12 @@ resources:
           - mkdir -pv /usr/lib/rkt/stage1-images
 
           - [curl, -L, {get_param: insecure}, {get_param: rkt_tar}, -o, /tmp/rkt_install/rkt.tar.gz]
-          - [cd, -P, /tmp/rkt_install]
-          - [tar, -xzvf, /tmp/rkt_install/rkt.tar.gz, --strip-components=1]
-          - [mv, -v, /tmp/rkt_install/rkt, /usr/bin/rkt]
-          - [mv, -v, /tmp/rkt_install/init/systemd/rkt-metadata.service, /etc/systemd/system/rkt-metadata.service]
-          - [mv, -v, /tmp/rkt_install/init/systemd/rkt-metadata.socket, /etc/systemd/system/rkt-metadata.socket]
+          - cd -P /tmp/rkt_install
+          - tar -xzvf /tmp/rkt_install/rkt.tar.gz --strip-components=1
+          - mv -v /tmp/rkt_install/rkt /usr/bin/rkt
+          - mv -v /tmp/rkt_install/init/systemd/rkt-metadata.service /etc/systemd/system/rkt-metadata.service
+          - mv -v /tmp/rkt_install/init/systemd/rkt-metadata.socket /etc/systemd/system/rkt-metadata.socket
+          - mv -v /tmp/rkt_install/init/systemd/rkt-api.service /etc/systemd/system/rkt-api.service
           - [mv, -v, /tmp/rkt_install/init/systemd/rkt-gc.timer, /etc/systemd/system/rkt-gc.timer]
           - [mv, -v, /tmp/rkt_install/init/systemd/rkt-gc.service, /etc/systemd/system/rkt-gc.service]
           - [mv, -v, /tmp/rkt_install/stage1-coreos.aci, /usr/lib/rkt/stage1-images/stage1-coreos.aci]
@@ -562,9 +551,10 @@ resources:
           - [mv, -v, /tmp/rkt_install/bash_completion/rkt.bash, /usr/share/bash-completion/completions/rkt]
           - rkt version
           - rm -Rf /tmp/rkt_install
+          - groupadd rkt
 
           - [curl, -L, {get_param: insecure}, {get_param: confd_bin}, -o, /usr/bin/confd]
-          - [chmod, +x, /usr/bin/confd]
+          - chmod +x /usr/bin/confd
           - /usr/bin/confd --version
 
           - [curl, -L, {get_param: insecure}, {get_param: flannel_tar}, -o, /tmp/flannel.tar.gz]
