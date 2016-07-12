@@ -1,7 +1,7 @@
 heat_template_version: 2014-10-16
 
 description: >
-  Fleet instance with role=worker
+  Fleet instance for Kubernetes
 
 resources:
   random:

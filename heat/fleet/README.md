@@ -11,6 +11,7 @@ Keep in mind the Debian 8 couldn't be used for Kubernetes (Rktnetes) because of 
 - cloud-init
 - modprobe tun
 - modprobe ip_tables
+- systemd-container
 
 
 **Over HTTP/s:**
@@ -22,6 +23,7 @@ Keep in mind the Debian 8 couldn't be used for Kubernetes (Rktnetes) because of 
 - netenv - https://github.com/kelseyhightower/setup-network-environment/releases
 - etcd3 - https://github.com/coreos/etcd/releases
 - flannel - docker://quay.io/coreos/flannel
+- kubernetes
 
 - ACI_URL - bucket to store aci
 
