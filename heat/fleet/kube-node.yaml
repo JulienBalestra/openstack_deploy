@@ -115,7 +115,8 @@ resources:
           - path: /etc/kubernetes/conf/templates/kubelet.tmpl
             permissions: 0644
             content: |
-              KUBE_MASTER_ENDPOINT={{$data := json (getv "/registry/services/endpoints/default/kubernetes")}}{{range $data.subsets}}{{getenv "PROTOCOL"}}://{{range .addresses}}{{.ip}}:{{getenv "PORT"}},{{end}}{{end}}
+              KUBE_MASTER_ENDPOINT={{$data := json (getv "/registry/services/endpoints/default/kubernetes")}}{{range $data.subsets}}{{range $idx, $svc := .addresses}}{{ if (eq $idx 0) }}{{.ip}}:{{getenv "PORT"}}{{end}}{{end}}{{end}}
+              KUBE_MASTER_ENDPOINTS={{$data := json (getv "/registry/services/endpoints/default/kubernetes")}}{{range $data.subsets}}{{range $idx, $svc := .addresses}}{{ if (ne $idx 0) }},{{end}}{{.ip}}:{{getenv "PORT"}}{{end}}{{end}}
 
           - path: /etc/systemd/system/kubelet-confd.service
             permissions: 0644
@@ -138,6 +139,18 @@ resources:
               [Install]
               WantedBy=multi-user.target
 
+          - path: /etc/rkt/net.d/20-kubernetes.io.conf
+            permissions: 0644
+            content: |
+              {
+                  "name": "rkt.kubernetes.io",
+                  "type": "flannel",
+                  "delegate": {
+                    "isDefaultGateway": true,
+                    "ipMasq": true
+                  }
+              }
+
           - path: /etc/systemd/system/kubelet.service
             permissions: 0644
             content: |
@@ -155,7 +168,7 @@ resources:
 
               ExecStart=/usr/bin/kubelet \
                 --allow-privileged=true \
-                --api-servers=${KUBE_MASTER_ENDPOINT} \
+                --api-servers=${KUBE_MASTER_ENDPOINTS} \
                 --cloud-provider="" \
                 --cluster-dns=${DEFAULT_IPV4} \
                 --cluster-domain=skydns.local \
@@ -167,6 +180,10 @@ resources:
 
               [Install]
               WantedBy=multi-user.target
+
+          - path: /var/lib/kubelet/kubeconfig
+            permissions: 0644
+
 
           - path: /etc/systemd/system/kube-proxy.service
             permissions: 0644

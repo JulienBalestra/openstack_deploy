@@ -122,7 +122,7 @@ resources:
                 --allow-privileged=true \
                 --service-cluster-ip-range=${FLANNEL_SUBNET} \
                 --advertise-address=${DEFAULT_IPV4} \
-                --admission-control=NamespaceLifecycle,LimitRanger,SecurityContextDeny,ServiceAccount,ResourceQuota \
+                --admission-control=NamespaceLifecycle,LimitRanger,ResourceQuota \
                 --enable-swagger-ui=true \
                 --apiserver-count=3 \
                 --v=2
