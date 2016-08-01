@@ -485,7 +485,7 @@ resources:
                 --volume sincedb,kind=host,source=${DB_FOLDER} \
                 --set-env=SINCEDB=${SINCE_DB} \
                 --set-env=DNS_SEARCH=${DNS_SEARCH} \
-                quay.io/julienbalestra/%p \
+                %p \
                 --mount volume=journal,target=/run/log/journal \
                 --mount volume=sincedb,target=${DB_FOLDER}
 
