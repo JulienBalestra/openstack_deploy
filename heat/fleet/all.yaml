@@ -97,7 +97,7 @@ resources:
       router: { get_resource: router }
       floatingip_network_name: {get_param: floatingip_network_name}
       key_name: {get_param: key_name}
-      flavor: {get_param: flavor_stateless}
+      flavor: {get_param: flavor_static}
       image: {get_param: image}
       dns_nameservers: {get_param: dns_nameservers}
       etcd_initial_cluster: "static0=http://192.168.1.10:2380,static1=http://192.168.1.11:2380,static2=http://192.168.1.12:2380"
@@ -109,7 +109,7 @@ resources:
       router: { get_resource: router }
       floatingip_network_name: {get_param: floatingip_network_name}
       key_name: {get_param: key_name}
-      flavor: {get_param: flavor_stateless}
+      flavor: {get_param: flavor_statefull}
       image: {get_param: image}
       dns_nameservers: {get_param: dns_nameservers}
       etcd_initial_cluster: "static0=http://192.168.1.10:2380,static1=http://192.168.1.11:2380,static2=http://192.168.1.12:2380"

@@ -231,7 +231,7 @@ resources:
                 kafka {
                   client_id => '{{getenv "HOSTNAME"}}'
                   topics => 'logs'
-                  bootstrap_servers => '{{range gets "/skydns/local/skydns/kafka/*" }}{{$data := json .Value}}{{$data.host}}:9092{{end}}'
+                  bootstrap_servers => '{{range $idx, $data := (gets "/skydns/local/skydns/kafka/*") }}{{ if (ne $idx 0) }},{{end}}{{$data := json .Value}}{{$data.host}}:9092{{end}}'
                   codec => json
                   auto_offset_reset => earliest
                 }
@@ -248,7 +248,7 @@ resources:
               }
               output {
                 elasticsearch {
-                  hosts => '{{range gets "/skydns/local/skydns/elasticsearch/*" }}{{$data := json .Value}}{{$data.host}}:9200{{end}}'
+                  hosts => '{{range $idx, $data := (gets "/skydns/local/skydns/elasticsearch/*") }}{{ if (ne $idx 0) }},{{end}}http://{{$data := json .Value}}{{$data.host}}:9200{{end}}'
                 }
               }
 
@@ -443,7 +443,7 @@ resources:
           - path: /etc/kibana/conf/templates/kibana.tmpl
             permissions: 0644
             content: |
-              elasticsearch.url: {{range gets "/skydns/local/skydns/elasticsearch/*" }}http://{{$data := json .Value}}{{$data.host}}:9200{{end}}
+              elasticsearch.url: {{range $idx, $data := (gets "/skydns/local/skydns/elasticsearch/*") }}{{ if (ne $idx 0) }},{{end}}http://{{$data := json .Value}}{{$data.host}}:9200{{end}}
 
         runcmd:
           - set -x

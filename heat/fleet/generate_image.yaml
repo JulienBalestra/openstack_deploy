@@ -575,6 +575,15 @@ resources:
           - systemctl enable setup-network-environment.timer
           - systemctl enable setup-network-environment.service
 
+          - mkdir -v /tmp/torus_install
+          - [curl, -L, {get_param: insecure}, {get_param: torus_tar}, -o, /tmp/torus_install/torus.tar.gz]
+          - cd -P /tmp/torus_install
+          - tar -xzvf /tmp/torus_install/torus.tar.gz --strip-components=1
+          - mv -v torusblk /usr/bin/torusblk
+          - mv -v torusctl /usr/bin/torusctl
+          - mv -v torusd /usr/bin/torusd
+          - rm -Rf /tmp/torus_install
+
           - mkdir -p /tmp/kubernetes_install
           - cd -P /tmp/kubernetes_install
           - [curl, -L, {get_param: insecure}, {get_param: kubernetes_tar}, -o, /tmp/kubernetes_install/kubernetes.tar.gz]
@@ -722,6 +731,10 @@ parameters:
   flannel_tar:
     type: string
     description: "quay.io/coreos/flannel container tar.gz"
+
+  torus_tar:
+    type: string
+    description: "https://github.com/coreos/torus/releases"
 
   docker_tar:
     type: string
