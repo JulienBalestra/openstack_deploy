@@ -97,6 +97,13 @@ outputs:
     value:
       - { get_attr: [static_token, value] }
 
+  endpoint:
+    value:
+      str_replace:
+       template: static0=http://__prefix__0:2380,static1=http://__prefix__1:2380,static2=http://__prefix__2:2380
+       params:
+         __prefix__: {get_param: static_prefix}
+
 
 parameters:
   key_name:
