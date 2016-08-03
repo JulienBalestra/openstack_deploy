@@ -306,7 +306,10 @@ resources:
               ExecStartPre=/usr/bin/rkt --insecure-options=all fetch ${ACI_URL}/%p.aci
               ExecStartPre=/usr/bin/etcdctl set /skydns/config \
                 '{"domain": "skydns.local"}'
-              ExecStart=/usr/bin/rkt run --net=host --set-env=SKYDNS_ADDR=${SKYDNS_ADDR} skynetservices/skydns
+              ExecStart=/usr/bin/rkt run \
+                --net=host \
+                --set-env=SKYDNS_ADDR=${SKYDNS_ADDR} \
+                skynetservices/skydns
               Restart=always
               RestartSec=20s
 
@@ -584,6 +587,13 @@ resources:
           - mv -v torusd /usr/bin/torusd
           - rm -Rf /tmp/torus_install
 
+          - mkdir -v /opt/cni
+          - [curl, -L, {get_param: insecure}, {get_param: cni_tar}, -o, /opt/cni/cni.tar.gz]
+          - cd -P /opt/cni
+          - tar -xzvf /opt/cni/cni.tar.gz --strip-components=1
+          - ln -s /opt/cni/cnitool /usr/bin/cnitool
+          - rm -v /opt/cni/cni.tar.gz
+
           - mkdir -p /tmp/kubernetes_install
           - cd -P /tmp/kubernetes_install
           - [curl, -L, {get_param: insecure}, {get_param: kubernetes_tar}, -o, /tmp/kubernetes_install/kubernetes.tar.gz]
@@ -610,7 +620,7 @@ resources:
           - truncate -s 0 /var/log/syslog
           - truncate -s 0 /var/log/*.log
           - truncate -s 0 /var/log/**/*.log
-          - echo runcmd_OK
+          - echo generate_finished_well
 
         final_message: "The system is finally up, after $UPTIME seconds. Shutting down for image building"
         power_state:
@@ -735,6 +745,10 @@ parameters:
   torus_tar:
     type: string
     description: "https://github.com/coreos/torus/releases"
+
+  cni_tar:
+    type: string
+    description: "https://github.com/containernetworking/cni/releases"
 
   docker_tar:
     type: string

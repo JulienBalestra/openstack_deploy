@@ -163,6 +163,7 @@ resources:
               [Service]
               EnvironmentFile=/etc/network-environment
               EnvironmentFile=/run/flannel/subnet.env
+              Environment=CNI_DIR=/opt/cni
 
               EnvironmentFile=/etc/kubemaster
 
@@ -173,6 +174,7 @@ resources:
                 --cluster-dns=${DEFAULT_IPV4} \
                 --cluster-domain=skydns.local \
                 --container-runtime=rkt \
+                --network-plugin-dir=${CNI_DIR} \
                 --v=2
 
               Restart=always
