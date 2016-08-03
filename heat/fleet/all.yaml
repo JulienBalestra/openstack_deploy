@@ -76,7 +76,7 @@ resources:
       flavor: {get_param: flavor_statefull}
       image: {get_param: image}
       dns_nameservers: {get_param: dns_nameservers}
-      etcd_initial_cluster: "static0=http://192.168.1.10:2380,static1=http://192.168.1.11:2380,static2=http://192.168.1.12:2380"
+      etcd_initial_cluster: {get_attr: [etcd_static, endpoint]}
 
   worker_stateless:
     depends_on: [ worker_statefull ]
@@ -88,7 +88,7 @@ resources:
       flavor: {get_param: flavor_stateless}
       image: {get_param: image}
       dns_nameservers: {get_param: dns_nameservers}
-      etcd_initial_cluster: "static0=http://192.168.1.10:2380,static1=http://192.168.1.11:2380,static2=http://192.168.1.12:2380"
+      etcd_initial_cluster: {get_attr: [etcd_static, endpoint]}
 
   kubemaster:
     depends_on: [ worker_stateless ]
@@ -100,7 +100,7 @@ resources:
       flavor: {get_param: flavor_static}
       image: {get_param: image}
       dns_nameservers: {get_param: dns_nameservers}
-      etcd_initial_cluster: "static0=http://192.168.1.10:2380,static1=http://192.168.1.11:2380,static2=http://192.168.1.12:2380"
+      etcd_initial_cluster: {get_attr: [etcd_static, endpoint]}
 
   kubenode:
     depends_on: [ kubemaster ]
@@ -112,4 +112,4 @@ resources:
       flavor: {get_param: flavor_statefull}
       image: {get_param: image}
       dns_nameservers: {get_param: dns_nameservers}
-      etcd_initial_cluster: "static0=http://192.168.1.10:2380,static1=http://192.168.1.11:2380,static2=http://192.168.1.12:2380"
+      etcd_initial_cluster: {get_attr: [etcd_static, endpoint]}
