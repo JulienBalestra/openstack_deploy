@@ -2,3 +2,7 @@ param.yaml
 /.idea/
 /scripts/haproxy/test_resources/etc_haproxy_haproxy.cfg
 *.iml
+phone
+/heat/fleet/environment
+/heat/fleet/instance
+/heat/fleet/image

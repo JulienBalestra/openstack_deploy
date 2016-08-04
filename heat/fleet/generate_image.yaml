@@ -7,7 +7,7 @@ resources:
   random:
     type: OS::Heat::RandomString
     properties:
-      length: 6
+      length: 4
       sequence: lettersdigits
 
   network:
@@ -83,25 +83,45 @@ resources:
             protocol: icmp
             direction: ingress
 
-  instance:
-    depends_on: [ generate_securitygroup, interface, generate_userdata]
-    type: "lib::FIPInstance"
+  port:
+    depends_on: [ random ]
+    type: OS::Neutron::Port
     properties:
-      key_name: { get_param: key_name }
-      security_group: { get_resource: generate_securitygroup }
-      network: { get_resource: network }
-      userdata: { get_resource: generate_userdata }
-      subnet: { get_resource: subnet }
-      flavor: { get_param: flavor }
-      image: { get_param: image }
-      floatingip_network_name: { get_param: floatingip_network_name }
-      instance_basename:
+      name:
+        str_replace:
+          template: bn%-rand%
+          params:
+            "bn%": "generate"
+            "rand%": { get_attr: [random, value] }
+      network_id: { get_resource: network }
+      fixed_ips: [{ "subnet_id": { get_resource: subnet } }]
+      security_groups: [ { get_resource: generate_securitygroup } ]
+
+  floating:
+    type: OS::Neutron::FloatingIP
+    depends_on: [ port ]
+    properties:
+      floating_network: { get_param: floatingip_network_name }
+      port_id: { get_resource: port }
+
+  instance:
+    depends_on: [ generate_securitygroup, interface, port, generate_userdata ]
+    type: OS::Nova::Server
+    properties:
+      name:
         str_replace:
           template: ctx%rand%-ress%
           params:
             "ctx%": {get_param: context}
             "ress%": "generate"
             "rand%": { get_attr: [random, value] }
+      key_name: { get_param: key_name }
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      networks:
+        - port: { get_resource: port }
+      user_data_format: RAW
+      user_data: { get_resource: generate_userdata }
 
   generate_userdata:
     type: OS::Heat::CloudConfig
@@ -459,6 +479,17 @@ resources:
                 sleep 30
               done
 
+          - path: /tmp/phone_home.sh
+            permissions: 0755
+            content: |
+              #! /usr/bin/env bash
+
+              set -x
+
+              nc -zvv $1 80
+              curl -XPOST $1/deployed -d 'ok'
+              exit 0
+
           - path: /etc/systemd/system/jds_kafka.service
             permissions: 0644
             content: |
@@ -621,6 +652,7 @@ resources:
           - truncate -s 0 /var/log/*.log
           - truncate -s 0 /var/log/**/*.log
           - echo generate_finished_well
+          - [/tmp/phone_home.sh, {get_param: phone}]
 
         final_message: "The system is finally up, after $UPTIME seconds. Shutting down for image building"
         power_state:
@@ -768,3 +800,11 @@ parameters:
   ssh_authorized_keys:
     type: comma_delimited_list
     label: ssh publics keys
+
+  phone:
+    type: string
+
+outputs:
+  instance_id:
+    description: "The instance id to snapshot"
+    value: {get_resource: instance}
