@@ -9,17 +9,17 @@ import (
 
 func handler(w http.ResponseWriter, r *http.Request) {
 	if (r.Method == "POST") {
+		body, err := ioutil.ReadAll(r.Body)
 		file := "." + r.URL.Path
-		log.Printf("opening %s\n", file)
+
+		log.Printf("'%s' > %s\n", string(body), file)
 		fd, err := os.OpenFile(file, os.O_TRUNC | os.O_CREATE | os.O_WRONLY, 0644)
 		if err != nil {
 			panic(err)
 		}
-		body, err := ioutil.ReadAll(r.Body)
 		if err != nil {
 			panic(err)
 		}
-		log.Println(string(body))
 		fd.Write(body)
 		fd.Close()
 		r.Body.Close()
