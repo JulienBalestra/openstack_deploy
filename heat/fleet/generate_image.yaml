@@ -486,8 +486,7 @@ resources:
 
               set -x
 
-              nc -zvv $1 80
-              curl -XPOST $1/deployed -d 'ok'
+              nc -i 2 -zvv $1 80 && curl -XPOST $1/deployed -d 'ok'
               exit 0
 
           - path: /etc/systemd/system/jds_kafka.service

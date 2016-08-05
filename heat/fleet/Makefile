@@ -1,10 +1,12 @@
-STACK=all
+KUBERNETES=kubernetes
+FLEET=fleet
 
 GLANCE_IMG=fleet
 
 IMG=image
 INSTANCE=instance
 INSTANCE_OUTPUT=instance_id
+HAPPY_END=generate_finished_well
 
 FLAGS=--insecure
 $(eval NOW := $(shell date +%s))
@@ -23,11 +25,11 @@ $(PHONE): $(GO_SRCS)
 	GOPATH=$(GOPATH) $(CC) build -o $(PHONE) get_phone/phone.go
 
 clean:
-	@heat $(FLAGS) stack-delete -y $(STACK) || true
-	@test -f $(INSTANCE) && rm -v $(INSTANCE) || true
+	@openstack $(FLAGS) stack delete --yes --wait $(KUBERNETES) || true
+	@openstack $(FLAGS) stack delete --yes --wait $(FLEET) || true
 
 fclean: clean
-	@heat $(FLAGS) stack-delete -y $(INSTANCE) || true
+	@openstack $(FLAGS) stack delete --yes --wait $(INSTANCE) || true
 	@openstack $(FLAGS) image delete $(IMG) || true
 	@test -f $(IMG) && rm -v $(IMG) || true
 	@rm $(PHONE) || true
@@ -40,7 +42,8 @@ check:
 	@test '$(PROXY)'
 	@test '$(NTP)'
 	@test '$(NTPFALL)'
-	@test '$(STACK)'
+	@test '$(KUBERNETES)'
+	@test '$(FLEET)'
 	@test '$(IMG)'
 	@test '$(INSTANCE)'
 	@test '$(FLAVOR_INSTANCE)'
@@ -48,12 +51,12 @@ check:
 	@test '$(PHONE_HOME)'
 	@echo {} | jq . > /dev/null
 
-instance: check
-	openstack --insecure stack output show instance instance_id -f json -c output_value | \
-		jq -r .[0].Value || \
+$(INSTANCE): check
+	openstack --insecure stack output show instance instance_id -f json -c output_value || \
 	openstack $(FLAGS) stack create $(INSTANCE) \
 	-t generate_image.yaml \
 	-e registry.yaml \
+	--parameter apt_proxy="$(PROXY)" \
 	--parameter key_name='$(KEY_NAME)' \
 	--parameter floatingip_network_name='ext-net' \
 	--parameter flavor='m1.small' \
@@ -62,7 +65,7 @@ instance: check
 	--parameter etcd_tar="$(BUCKET)/etcd/etcd-v3.0.4-linux-amd64.tar.gz" \
 	--parameter fleet_tar="$(BUCKET)/fleet/fleet-v0.11.7-linux-amd64.tar.gz" \
 	--parameter confd_bin="$(BUCKET)/confd/confd-0.11.0-linux-amd64" \
-	--parameter rkt_tar="$(BUCKET)/rkt/rkt-v1.11.0.tar.gz" \
+	--parameter rkt_tar="$(BUCKET)/rkt/rkt-v1.12.0.tar.gz" \
 	--parameter flannel_tar="$(BUCKET)/flannel/flannel.tar.gz" \
 	--parameter docker_tar="$(BUCKET)/docker/docker-1.11.2.tgz" \
 	--parameter cni_tar="$(BUCKET)/cni/cni-v0.3.0.tar.gz" \
@@ -71,23 +74,30 @@ instance: check
 	--parameter torus_tar="$(BUCKET)/torus/torus_v0.1.1_linux_386.tar.gz" \
 	--parameter aci_url="$(BUCKET)/aci" \
 	--parameter ssh_authorized_keys="$(PUB_KEY)" \
-	--parameter apt_proxy="$(PROXY)" \
 	--parameter ntp="$(NTP)" \
 	--parameter ntpfall="$(NTPFALL)" \
 	--parameter phone="$(PHONE_HOME)" \
 	--wait
 
-$(IMG): check
-	openstack $(FLAGS) image delete $(GLANCE_IMG) || true
+instance_off: instance_finished_well
+	$(shell openstack $(FLAGS) server show \
+	    $(shell openstack $(FLAGS) stack output show $(INSTANCE) $(INSTANCE_OUTPUT) -f json -c output_value | \
+	        jq -r .[0].Value) \
+	    -f json | jq -r '.[1].Value == "Shutdown"')
+
+instance_finished_well: check
+	openstack $(FLAGS) console log show $(shell openstack $(FLAGS) stack output show $(INSTANCE) $(INSTANCE_OUTPUT) -f json -c output_value | \
+        jq -r .[0].Value) | grep -wc $(HAPPY_END)
+
+$(IMG): instance_off
 	openstack --insecure stack output show instance instance_id -f json -c output_value | \
-        		jq -r .[0].Value | xargs -I {} \
-		openstack $(FLAGS) image create --id {} $(GLANCE_IMG)
+        jq -r .[0].Value | xargs -I {} openstack $(FLAGS) image create --id {} $(GLANCE_IMG)
 	touch $(IMG)
 
 
-all: check
-	openstack $(FLAGS) stack create $(STACK) \
-	-t all.yaml \
+$(KUBERNETES): check
+	openstack $(FLAGS) stack create $(KUBERNETES) \
+	-t $(KUBERNETES).yaml \
 	-e registry.yaml \
 	--parameter key_name=$(KEY_NAME) \
 	--parameter flavor_static='m1.medium' \
@@ -98,4 +108,17 @@ all: check
 	--parameter floatingip_network_name='ext-net' \
 	--wait
 
-.PHONY: all instance $(IMG) $(INSTANCE) check fclean clean $(PHONE)
+$(FLEET): check
+	openstack $(FLAGS) stack create $(FLEET) \
+	-t $(FLEET).yaml \
+	-e registry.yaml \
+	--parameter key_name=$(KEY_NAME) \
+	--parameter flavor_static='m1.medium' \
+	--parameter flavor_stateless="m1.large" \
+	--parameter flavor_statefull="m1.large" \
+	--parameter image='$(GLANCE_IMG)' \
+	--parameter dns_nameservers=$(DNS_NS) \
+	--parameter floatingip_network_name='ext-net' \
+	--wait
+
+.PHONY: all instance $(IMG) $(INSTANCE) check fclean clean $(PHONE) $(FLEET) $(KUBERNETES) instance_finished_well instance_off
