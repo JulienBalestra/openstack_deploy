@@ -292,6 +292,7 @@ resources:
               [X-Fleet]
               MachineMetadata="role=worker" "state=stateless"
               Conflicts=kibana@*
+              MachineOf=kibana-confd@%i.service
 
           - path: /etc/traefik/traefik.toml
             permissions: 0644
@@ -370,9 +371,6 @@ resources:
               [Service]
               SyslogIdentifier=%p
               WorkingDirectory=/etc/systemd/system/
-              ExecStartPre=/usr/bin/fleetctl list-machines
-              ExecStartPre=/usr/bin/fleetctl list-units
-              ExecStartPre=/usr/bin/fleetctl load kibana@%i.service
               ExecStart=/usr/bin/fleetctl start kibana-confd@%i.service
               ExecStartPost=/usr/bin/fleetctl start kibana-sidekick@%i.service
               Restart=on-failure

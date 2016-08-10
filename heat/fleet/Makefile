@@ -52,7 +52,7 @@ check:
 	@echo {} | jq . > /dev/null
 
 $(INSTANCE): check
-	openstack --insecure stack output show instance instance_id -f json -c output_value || \
+	@openstack --insecure stack output show instance instance_id -f json -c output_value || \
 	openstack $(FLAGS) stack create $(INSTANCE) \
 	-t generate_image.yaml \
 	-e registry.yaml \
@@ -96,7 +96,7 @@ $(IMG): instance_off
 
 
 $(KUBERNETES): check
-	openstack $(FLAGS) stack create $(KUBERNETES) \
+	@openstack $(FLAGS) stack create $(KUBERNETES) \
 	-t $(KUBERNETES).yaml \
 	-e registry.yaml \
 	--parameter key_name=$(KEY_NAME) \
@@ -109,7 +109,7 @@ $(KUBERNETES): check
 	--wait
 
 $(FLEET): check
-	openstack $(FLAGS) stack create $(FLEET) \
+	@openstack $(FLAGS) stack create $(FLEET) \
 	-t $(FLEET).yaml \
 	-e registry.yaml \
 	--parameter key_name=$(KEY_NAME) \
