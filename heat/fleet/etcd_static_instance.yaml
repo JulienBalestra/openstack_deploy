@@ -29,6 +29,13 @@ resources:
         - port: { get_resource: port }
       user_data_format: RAW
       user_data: { get_resource: userdata }
+      name:
+        str_replace:
+         template: __name__-__index__-__token__
+         params:
+           __name__: {get_param: name}
+           __index__: {get_param: index}
+           __token__: {get_param: etcd_initial_cluster_token}
       scheduler_hints:
         group: { get_param: anti_affinity }
 
@@ -41,6 +48,7 @@ resources:
         etcd_initial_cluster_token: { get_param: etcd_initial_cluster_token }
         etcd_initial_cluster: { get_param: etcd_initial_cluster }
         etcd_initial_cluster_state: { get_param: etcd_initial_cluster_state }
+        etcd_initial_cluster_ip: { get_param: etcd_initial_cluster_ip }
 
   userdata:
     type: OS::Heat::CloudConfig
@@ -55,24 +63,72 @@ resources:
             content: |
               #!/usr/bin/env bash
 
-              set -e ; set -o pipefail
+              set -x ; set -o pipefail
 
+              ETCD_DATA_DIR=/var/lib/etcd
               DEFAULT_IPV4=$(curl 169.254.169.254/1.0/meta-data/local-ipv4)
+
+              ETCD_INITIAL_CLUSTER="$(curl http://169.254.169.254/openstack/latest/meta_data.json |
+                jq -r -e .meta.etcd_initial_cluster)"
+
+              ETCD_INITIAL_CLUSTER_IP="$(curl http://169.254.169.254/openstack/latest/meta_data.json |
+                jq -r -e .meta.etcd_initial_cluster_ip)"
+
+              ETCD_NAME=$(curl http://169.254.169.254/openstack/latest/meta_data.json |
+                              jq -r -e .meta.etcd_name)
+
+              # Check if the data-dir is empty: First boot
+              if [ ! -d ${ETCD_DATA_DIR}/member ]
+              then
+
+                  # Check if there is an existing cluster
+                  etcdctl --endpoints $ETCD_INITIAL_CLUSTER_IP cluster-health
+                  if [ $? -eq 0 ]
+                  then
+
+                    # Check if this new member make a replacement
+                    ETCD_INITIAL_CLUSTER_STATE=existing
+                    REMOVE=$(etcdctl --endpoints $ETCD_INITIAL_CLUSTER_IP member list | \
+                      grep "name=$ETCD_NAME" | awk 'gsub(":","") {print $1}')
+                    if [ $REMOVE ]
+                    then
+                      etcdctl --endpoints $ETCD_INITIAL_CLUSTER_IP member remove $REMOVE && \
+                        etcdctl --endpoints $ETCD_INITIAL_CLUSTER_IP member add $ETCD_NAME "http://${DEFAULT_IPV4}:2380"
+
+                    # Check if this new member extend the orginal cluster
+                    elif [[ $ETCD_INITIAL_CLUSTER != *"${ETCD_NAME}=http://${DEFAULT_IPV4}:2380"* ]]
+                    then
+
+                      ETCD_INITIAL_CLUSTER=$(etcdctl --endpoints $ETCD_INITIAL_CLUSTER_IP member list  | \
+                        awk ' gsub("name=","") gsub("peerURLs","") {print $2 $3} ;  ' | \
+                        sort | tr '\n' ',')
+                      ETCD_INITIAL_CLUSTER="${ETCD_INITIAL_CLUSTER}${ETCD_NAME}=http://${DEFAULT_IPV4}:2380"
+                      etcdctl --endpoints $ETCD_INITIAL_CLUSTER_IP member add $ETCD_NAME "http://${DEFAULT_IPV4}:2380"
+                    fi
+
+                  else
+                    ETCD_INITIAL_CLUSTER_STATE=new
+                  fi
+
+                else
+                  ETCD_INITIAL_CLUSTER_STATE=new
+              fi
+
+              set -e
 
               cat << EOF | tee /etc/etcd-environment
               ETCD_INITIAL_CLUSTER_TOKEN="$(curl http://169.254.169.254/openstack/latest/meta_data.json |
                 jq -r -e .meta.etcd_initial_cluster_token)"
-              ETCD_INITIAL_CLUSTER="$(curl http://169.254.169.254/openstack/latest/meta_data.json |
-                jq -r -e .meta.etcd_initial_cluster)"
-              ETCD_INITIAL_CLUSTER_STATE="$(curl http://169.254.169.254/openstack/latest/meta_data.json |
-                jq -r -e .meta.etcd_initial_cluster_state)"
+              ETCD_INITIAL_CLUSTER="$ETCD_INITIAL_CLUSTER"
+              ETCD_INITIAL_CLUSTER_STATE="$ETCD_INITIAL_CLUSTER_STATE"
               ETCD_ADVERTISE_CLIENT_URLS="http://${DEFAULT_IPV4}:2379"
               ETCD_INITIAL_ADVERTISE_PEER_URLS="http://${DEFAULT_IPV4}:2380"
               ETCD_LISTEN_CLIENT_URLS="http://0.0.0.0:2379,http://0.0.0.0:4001"
               ETCD_LISTEN_PEER_URLS="http://${DEFAULT_IPV4}:2380,http://${DEFAULT_IPV4}:7001"
-              ETCD_NAME=$(curl http://169.254.169.254/openstack/latest/meta_data.json |
-                jq -r -e .meta.etcd_name)
+              ETCD_NAME=$ETCD_NAME
+              ETCD_DATA_DIR=$ETCD_DATA_DIR
               EOF
+
 
           - path: /etc/systemd/system/fleet.service.d/10-metadata.conf
             permissions: 0644
@@ -137,6 +193,12 @@ parameters:
     type: string
 
   etcd_initial_cluster:
+    type: string
+
+  etcd_initial_cluster_ip:
+    type: string
+
+  name:
     type: string
 
   etcd_initial_cluster_state:

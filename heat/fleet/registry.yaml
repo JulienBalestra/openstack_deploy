@@ -16,3 +16,5 @@ resource_registry:
   "EtcdStaticInstance": etcd_static_instance.yaml
 
   "lib::FIPInstance": ../lib/fip_instance.yaml
+
+  "GenEtcdConf": gen_etcd_conf.yaml

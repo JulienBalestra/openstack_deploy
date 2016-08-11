@@ -76,7 +76,7 @@ resources:
       flavor: {get_param: flavor_statefull}
       image: {get_param: image}
       dns_nameservers: {get_param: dns_nameservers}
-      etcd_initial_cluster: {get_attr: [etcd_static, endpoint]}
+      etcd_initial_cluster: {get_attr: [etcd_static, peers]}
 
   worker_stateless:
     depends_on: [ worker_statefull ]
@@ -88,4 +88,4 @@ resources:
       flavor: {get_param: flavor_stateless}
       image: {get_param: image}
       dns_nameservers: {get_param: dns_nameservers}
-      etcd_initial_cluster: {get_attr: [etcd_static, endpoint]}
+      etcd_initial_cluster: {get_attr: [etcd_static, peers]}

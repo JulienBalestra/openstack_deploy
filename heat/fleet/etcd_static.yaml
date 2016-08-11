@@ -7,7 +7,7 @@ resources:
   static_token:
     type: OS::Heat::RandomString
     properties:
-      length: 20
+      length: 10
       sequence: lettersdigits
 
   static_network:
@@ -72,11 +72,22 @@ resources:
       name: "etcd_static"
       policies: ["anti-affinity"] # Beware about the number of compute nodes
 
-  etcd_static_group:
-    depends_on: [ static_interface, etcd_securitygroup, static_token, etcd_static_anti ]
+  etcd_static_conf:
     type: OS::Heat::ResourceGroup
     properties:
-      count: 3
+      count: { get_param: size }
+      resource_def:
+        type: "GenEtcdConf"
+        properties:
+          name: {get_param: name}
+          index: "%index%"
+          prefix: {get_param: static_prefix}
+
+  etcd_static_group:
+    depends_on: [ etcd_static_conf, static_interface, etcd_securitygroup, static_token, etcd_static_anti ]
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: { get_param: size }
       resource_def:
         type: "EtcdStaticInstance"
         properties:
@@ -88,13 +99,15 @@ resources:
           flavor: { get_param: flavor }
           image: { get_param: image }
           index: "%index%"
+          name: {get_param: name}
           prefix: {get_param: static_prefix}
           etcd_initial_cluster_token: { get_attr: [static_token, value] }
+
+          etcd_initial_cluster_ip:
+            list_join: [ ",", { get_attr: [etcd_static_conf, clients] } ]
+
           etcd_initial_cluster:
-            str_replace:
-             template: static0=http://__prefix__0:2380,static1=http://__prefix__1:2380,static2=http://__prefix__2:2380
-             params:
-               __prefix__: {get_param: static_prefix}
+            list_join: [ ",", { get_attr: [etcd_static_conf, peers] } ]
 
 outputs:
   static_token:
@@ -102,12 +115,13 @@ outputs:
     value:
       - { get_attr: [static_token, value] }
 
-  endpoint:
+  peers:
     value:
-      str_replace:
-       template: static0=http://__prefix__0:2380,static1=http://__prefix__1:2380,static2=http://__prefix__2:2380
-       params:
-         __prefix__: {get_param: static_prefix}
+      list_join: [ ",", { get_attr: [etcd_static_conf, peers] } ]
+
+  clients:
+    value:
+      list_join: [ ",", { get_attr: [etcd_static_conf, clients] } ]
 
 
 parameters:
@@ -183,3 +197,21 @@ parameters:
   router:
     type: string
     description: Router id where connect interface to subnet
+
+  name:
+    type: string
+    description: Instance base name for Etcd cluster
+    default: "static"
+
+  size:
+    type: number
+    default: 3
+    constraints:
+    - type: Choice
+      values:
+      - 1
+      - 3
+      - 5
+      - 9
+    constraints:
+      - range: { min: 1 }
