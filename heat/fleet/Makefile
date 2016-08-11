@@ -121,4 +121,16 @@ $(FLEET): check
 	--parameter floatingip_network_name='ext-net' \
 	--wait
 
+fleet_add_extra_member:
+	@./add_member.sh
+
+fleet_delete_extra_member:
+	@./delete_member.sh
+
+fleet_delete_extra_members:
+	@./delete_member.sh all
+
+fleet_delete: fleet_delete_extra_members
+	openstack $(FLAGS) stack delete --yes $(FLEET) --wait
+
 .PHONY: all instance $(IMG) $(INSTANCE) check fclean clean $(PHONE) $(FLEET) $(KUBERNETES) instance_finished_well instance_off
