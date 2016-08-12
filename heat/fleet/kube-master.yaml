@@ -249,7 +249,7 @@ resources:
           - systemctl enable flanneld.service
           - systemctl enable fleet.socket
           - systemctl enable fleet.service
-          - systemctl enable skydns.service
+          - systemctl enable fleet-skydns.service
           - systemctl enable jds_kafka.service
 
           - systemctl start kube-apiserver.service
@@ -262,8 +262,8 @@ resources:
           - systemctl start flanneld.service
           - systemctl start setup-fleet-environment.service
           - systemctl start fleet.service
-          - systemctl start skydns.service
-          - systemctl start jds_kafka.service
+          - systemctl start fleet-skydns.service
+          - systemctl start fleet-jds_kafka.service
 
           - systemctl start kube-apiserver.service
           - systemctl start kube-scheduler.service

@@ -310,6 +310,24 @@ resources:
               [Install]
               WantedBy=multi-user.target
 
+          - path: /etc/systemd/system/fleet-skydns.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=Fleeter for SkyDNS
+
+              Requires=fleet.service
+              After=fleet.service
+
+              [Service]
+              SyslogIdentifier=%p
+              WorkingDirectory=/etc/systemd/system/
+              ExecStartPre=/usr/bin/fleetctl list-machines
+              ExecStartPre=/usr/bin/fleetctl list-units
+              ExecStart=/usr/bin/fleetctl start skydns.service
+              Restart=on-failure
+              RestartSec=10s
+
           - path: /etc/systemd/system/skydns.service
             permissions: 0644
             content: |
@@ -333,8 +351,8 @@ resources:
               Restart=always
               RestartSec=20s
 
-              [Install]
-              WantedBy=multi-user.target
+              [X-Fleet]
+              Global=true
 
           - path: /etc/systemd/system/setup-network-environment.service
             permissions: 0644
@@ -486,8 +504,26 @@ resources:
 
               set -x
 
-              nc -i 2 -zvv $1 80 && curl -XPOST $1/deployed -d 'ok'
+              curl --connect-timeout 5 -XPOST $1/deployed -d 'ok'
               exit 0
+
+          - path: /etc/systemd/system/fleet-jds_kafka.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=Fleeter for Journald Stream Kafka
+
+              Requires=fleet.service skydns.service flanneld.service
+              After=fleet.service skydns.service flanneld.service
+
+              [Service]
+              SyslogIdentifier=%p
+              WorkingDirectory=/etc/systemd/system/
+              ExecStartPre=/usr/bin/fleetctl list-machines
+              ExecStartPre=/usr/bin/fleetctl list-units
+              ExecStart=/usr/bin/fleetctl start jds_kafka.service
+              Restart=on-failure
+              RestartSec=10s
 
           - path: /etc/systemd/system/jds_kafka.service
             permissions: 0644
@@ -526,6 +562,9 @@ resources:
               Restart=always
               RestartSec=120s
               TimeoutStartSec=60min
+
+              [X-Fleet]
+              Global=true
 
         runcmd:
           - set -x
@@ -640,6 +679,7 @@ resources:
           - mv /tmp/kubernetes_install/server/bin/kubelet /usr/bin/kubelet
           - mv /tmp/kubernetes_install/server/bin/kubemark /usr/bin/kubemark
           - rm -Rf /tmp/kubernetes_install
+          - cd -P /tmp
 
           - rm -v /etc/machine-id ; rm -v /var/lib/dbus/machine-id
           - touch /etc/machine-id ; touch /var/lib/dbus/machine-id

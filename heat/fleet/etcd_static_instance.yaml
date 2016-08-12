@@ -155,14 +155,14 @@ resources:
           - systemctl enable setup-fleet-environment.service
           - systemctl enable fleet.socket
           - systemctl enable fleet.service
-          - systemctl enable skydns.service
+          - systemctl enable fleet-skydns.service
           - systemctl start setup-etcd-environment.service
           - systemctl start etcd.service
           - systemctl start flanneld.service
           - systemctl start fleet.service
           - systemctl start setup-fleet-environment.service
-          - systemctl start skydns.service
-          - systemctl start jds_kafka.service
+          - systemctl start fleet-skydns.service
+          - systemctl start fleet-jds_kafka.service
 
         final_message: "The system is finally up, after $UPTIME seconds"
 
