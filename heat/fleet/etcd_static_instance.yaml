@@ -1,7 +1,7 @@
 heat_template_version: 2014-10-16
 
 description: >
-  etcd instance for static bootstrap
+  Etcd instance for static Etcd cluster
 
 resources:
   port:

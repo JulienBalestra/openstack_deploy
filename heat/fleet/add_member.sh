@@ -2,6 +2,7 @@
 
 
 set -o pipefail
+set -e
 
 BASE=fleet
 PARENT=etcd_static
@@ -21,6 +22,7 @@ do
     PARAMS="${PARAMS} --parameter ${key}=${value}"
 done
 
+set -x
 openstack --insecure stack create ${PARENT}-${INDEX}-${TOKEN} -t ${CHILD_STACK} ${PARAMS} --wait
 
 

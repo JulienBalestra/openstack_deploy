@@ -1,7 +1,7 @@
 heat_template_version: 2014-10-16
 
 description: >
-  Etcd2 static cluster
+  Etcd static cluster
 
 resources:
   static_token:

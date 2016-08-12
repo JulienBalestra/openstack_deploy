@@ -1,7 +1,7 @@
 heat_template_version: 2014-10-16
 
 description: >
-  All on generated image
+  Fleet cluster over etcd static cluster, with Flannel, Kafka + ELK access over Traefik RP to deploy a Kubernetes cluster
 
 parameters:
 

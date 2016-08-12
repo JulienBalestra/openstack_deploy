@@ -1,7 +1,7 @@
 heat_template_version: 2014-10-16
 
 description: >
-  Fleet instances for kube nodes
+  Fleet instances for Kubernetes nodes
 
 resources:
 

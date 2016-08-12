@@ -121,13 +121,13 @@ $(FLEET): check
 	--parameter floatingip_network_name='ext-net' \
 	--wait
 
-fleet_add_extra_member:
+fleet_add_extra_member: check
 	@./add_member.sh
 
-fleet_delete_extra_member:
+fleet_delete_extra_member: check
 	@./delete_member.sh
 
-fleet_delete_extra_members:
+fleet_delete_extra_members: check
 	@./delete_member.sh all
 
 fleet_delete: fleet_delete_extra_members
