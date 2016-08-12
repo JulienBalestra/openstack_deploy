@@ -30,7 +30,8 @@ clean:
 
 fclean: clean
 	@openstack $(FLAGS) stack delete --yes --wait $(INSTANCE) || true
-	@openstack $(FLAGS) image delete $(IMG) || true
+	@openstack $(FLAGS) image delete $(GLANCE_IMG) || true
+	@nova $(FLAGS) image-delete fleet $(GLANCE_IMG) || true
 	@test -f $(IMG) && rm -v $(IMG) || true
 	@rm $(PHONE) || true
 
@@ -51,7 +52,30 @@ check:
 	@test '$(PHONE_HOME)'
 	@echo {} | jq . > /dev/null
 
-$(INSTANCE): check
+check_versions:
+	test '$(ETCD_VERSION)'
+	test '$(FLEET_VERSION)'
+	test '$(CONFD_VERSION)'
+	test '$(RKT_VERSION)'
+	test '$(FLANNEL_VERSION)'
+	test '$(DOCKER_VERSION)'
+	test '$(KUBERNETES_VERSION)'
+	test '$(CNI_VERSION)'
+	test '$(TORUS_VERSION)'
+	test '$(NETENV_VERSION)'
+
+	curl -Ifk $(BUCKET)/etcd/$(ETCD_VERSION)
+	curl -Ifk $(BUCKET)/fleet/$(FLEET_VERSION)
+	curl -Ifk $(BUCKET)/confd/$(CONFD_VERSION)
+	curl -Ifk $(BUCKET)/rkt/$(RKT_VERSION)
+	curl -Ifk $(BUCKET)/flannel/$(FLANNEL_VERSION)
+	curl -Ifk $(BUCKET)/docker/$(DOCKER_VERSION)
+	curl -Ifk $(BUCKET)/kubernetes/$(KUBERNETES_VERSION)
+	curl -Ifk $(BUCKET)/cni/$(CNI_VERSION)
+	curl -Ifk $(BUCKET)/netenv/$(NETENV_VERSION)
+	curl -Ifk $(BUCKET)/torus/$(TORUS_VERSION)
+
+$(INSTANCE): check check_versions
 	@openstack --insecure stack output show instance instance_id -f json -c output_value || \
 	openstack $(FLAGS) stack create $(INSTANCE) \
 	-t generate_image.yaml \
@@ -62,16 +86,16 @@ $(INSTANCE): check
 	--parameter flavor='m1.small' \
 	--parameter image='ubuntu-16.04-server' \
 	--parameter dns_nameservers='$(DNS_NS)' \
-	--parameter etcd_tar="$(BUCKET)/etcd/etcd-v3.0.4-linux-amd64.tar.gz" \
-	--parameter fleet_tar="$(BUCKET)/fleet/fleet-v0.11.7-linux-amd64.tar.gz" \
-	--parameter confd_bin="$(BUCKET)/confd/confd-0.11.0-linux-amd64" \
-	--parameter rkt_tar="$(BUCKET)/rkt/rkt-v1.12.0.tar.gz" \
-	--parameter flannel_tar="$(BUCKET)/flannel/flannel.tar.gz" \
-	--parameter docker_tar="$(BUCKET)/docker/docker-1.11.2.tgz" \
-	--parameter cni_tar="$(BUCKET)/cni/cni-v0.3.0.tar.gz" \
-	--parameter kubernetes_tar="$(BUCKET)/kubernetes/kubernetes-server-linux-amd64.tar.gz" \
+	--parameter etcd_tar="$(BUCKET)/etcd/$(ETCD_VERSION)" \
+	--parameter fleet_tar="$(BUCKET)/fleet/$(FLEET_VERSION)" \
+	--parameter confd_bin="$(BUCKET)/confd/$(CONFD_VERSION)" \
+	--parameter rkt_tar="$(BUCKET)/rkt/$(RKT_VERSION)" \
+	--parameter flannel_tar="$(BUCKET)/flannel/$(FLANNEL_VERSION)" \
+	--parameter docker_tar="$(BUCKET)/docker/$(DOCKER_VERSION)" \
+	--parameter cni_tar="$(BUCKET)/cni/$(CNI_VERSION)" \
+	--parameter kubernetes_tar="$(BUCKET)/kubernetes/$(KUBERNETES_VERSION)" \
 	--parameter netenv_bin="$(BUCKET)/netenv/setup-network-environment" \
-	--parameter torus_tar="$(BUCKET)/torus/torus_v0.1.1_linux_386.tar.gz" \
+	--parameter torus_tar="$(BUCKET)/torus/$(TORUS_VERSION)" \
 	--parameter aci_url="$(BUCKET)/aci" \
 	--parameter ssh_authorized_keys="$(PUB_KEY)" \
 	--parameter ntp="$(NTP)" \
@@ -79,19 +103,19 @@ $(INSTANCE): check
 	--parameter phone="$(PHONE_HOME)" \
 	--wait
 
-instance_off: instance_finished_well
+is_instance_off: is_instance_finished_well
 	$(shell openstack $(FLAGS) server show \
 	    $(shell openstack $(FLAGS) stack output show $(INSTANCE) $(INSTANCE_OUTPUT) -f json -c output_value | \
 	        jq -r .[0].Value) \
 	    -f json | jq -r '.[1].Value == "Shutdown"')
 
-instance_finished_well: check
+is_instance_finished_well: check
 	openstack $(FLAGS) console log show $(shell openstack $(FLAGS) stack output show $(INSTANCE) $(INSTANCE_OUTPUT) -f json -c output_value | \
         jq -r .[0].Value) | grep -wc $(HAPPY_END)
 
-$(IMG): instance_off
+$(IMG): is_instance_off
 	openstack --insecure stack output show instance instance_id -f json -c output_value | \
-        jq -r .[0].Value | xargs -I {} openstack $(FLAGS) image create --id {} $(GLANCE_IMG)
+        jq -r .[0].Value | xargs -I {} nova $(FLAGS) image-create {} $(GLANCE_IMG) --poll
 	touch $(IMG)
 
 
@@ -133,4 +157,4 @@ fleet_delete_extra_members: check
 fleet_delete: fleet_delete_extra_members
 	openstack $(FLAGS) stack delete --yes $(FLEET) --wait
 
-.PHONY: all instance $(IMG) $(INSTANCE) check fclean clean $(PHONE) $(FLEET) $(KUBERNETES) instance_finished_well instance_off
+.PHONY: all instance $(IMG) $(INSTANCE) check fclean clean $(PHONE) $(FLEET) $(KUBERNETES) is_instance_finished_well is_instance_off
