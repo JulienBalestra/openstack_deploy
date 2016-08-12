@@ -32,6 +32,13 @@
     make kubernetes
 
 
+### Inventory
+
+Inventory is a go static binary used to get inventory infos over a Fleet based cluster
+
+    git clone https://github.com/JulienBalestra/inventory.git
+    cd inventory ; make
+
 # Requirements
 
 ### Generate the Debian 8 image or Ubuntu 16.04
