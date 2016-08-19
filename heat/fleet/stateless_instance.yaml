@@ -337,27 +337,8 @@ resources:
               RestartSec=30s
               TimeoutStartSec=10min
 
-              [X-Fleet]
-              MachineMetadata="role=worker" "state=stateless"
-              Conflicts=traefik@*
-
-          - path: /etc/systemd/system/fleet-traefik@.service
-            permissions: 0644
-            content: |
-              [Unit]
-              Description=Fleeter for kibana
-
-              Requires=fleet.service
-              After=fleet.service
-
-              [Service]
-              SyslogIdentifier=%p
-              WorkingDirectory=/etc/systemd/system/
-              ExecStartPre=/usr/bin/fleetctl list-machines
-              ExecStartPre=/usr/bin/fleetctl list-units
-              ExecStart=/usr/bin/fleetctl start traefik@%i.service
-              Restart=on-failure
-              RestartSec=30s
+              [Install]
+              WantedBy=multi-user.target
 
           - path: /etc/systemd/system/fleet-kibana@.service
             permissions: 0644

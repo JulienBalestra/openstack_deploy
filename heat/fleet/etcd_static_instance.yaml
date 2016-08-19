@@ -138,6 +138,95 @@ resources:
               ETCD_DATA_DIR=$ETCD_DATA_DIR
               EOF
 
+          - path: /opt/bin/etcd-gc.sh
+            permissions: 0755
+            content: |
+              #!/usr/bin/env bash
+
+              set -o pipefail
+
+              if [ -z ${LOSTS} ]
+              then
+                echo 'Missing ${LOSTS}'
+              fi
+
+              ACTUAL_LOSTS=$(etcdctl cluster-health  | \
+                grep "failed to check the health of member" | \
+                grep -Eo "[a-f0-9]{16}")
+
+              if [ ${ACTUAL_LOSTS} ] && [ -f ${LOSTS} ]
+              then
+
+                echo "Actual losts: ${ACTUAL_LOSTS}"
+                for member in ${ACTUAL_LOSTS}
+                do
+
+                  echo "Checking ${member}"
+                  IS_LOST=$(grep ${member} ${LOSTS})
+                  IP_LOST=$(etcdctl cluster-health | grep ${member} | \
+                    grep -Eo "[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}" | uniq)
+
+                  ping -W 10 -c 3 ${IP_LOST}
+                  RET=$?
+
+                  if [ ${RET} -ne 0 ] && [ ${IS_LOST} ]
+                  then
+                    echo "Member is lost: ${IS_LOST}"
+                    etcdctl member remove ${IS_LOST}
+
+                  elif [ ${RET} -eq 0 ] && [ ${IS_LOST} ]
+                  then
+                    echo "Member is lost: ${IS_LOST} but ping reply"
+                  else
+                    echo "Member is found: ${member}"
+                  fi
+
+                done
+
+                sleep 2
+
+                ACTUAL_LOSTS=$(etcdctl cluster-health  | \
+                  grep "failed to check the health of member" | \
+                  grep -Eo "[a-f0-9]{16}")
+                echo ${ACTUAL_LOSTS} > ${LOSTS}
+
+              else
+                echo ${ACTUAL_LOSTS} > ${LOSTS}
+              fi
+
+          - path: /etc/systemd/system/etcd-gc.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=Purge orphan Etcd Members
+
+              Requires=etcd.service
+              After=etcd.service
+
+              [Service]
+              SyslogIdentifier=%p
+              Type=oneshot
+              Environment=LOSTS=/var/lib/etcd/losts
+              ExecStartPre=-/bin/cat $LOSTS
+              ExecStart=/opt/bin/etcd-gc.sh
+              ExecStartPost=-/bin/cat $LOSTS
+
+              [Install]
+              WantedBy=multi-user.target
+
+          - path: /etc/systemd/system/etcd-gc.timer
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=Periodic gc missing Etcd members
+
+              [Timer]
+              OnActiveSec=0s
+              OnUnitActiveSec=1h
+
+              [Install]
+              WantedBy=multi-user.target
+
 
           - path: /etc/systemd/system/fleet.service.d/10-metadata.conf
             permissions: 0644
@@ -156,6 +245,8 @@ resources:
           - systemctl enable fleet.socket
           - systemctl enable fleet.service
           - systemctl enable fleet-skydns.service
+          - systemctl enable etcd-gc.service
+          - systemctl enable etcd-gc.timer
           - systemctl start setup-etcd-environment.service
           - systemctl start etcd.service
           - systemctl start flanneld.service

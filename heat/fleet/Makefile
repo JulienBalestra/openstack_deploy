@@ -35,6 +35,13 @@ fclean: clean
 	@test -f $(IMG) && rm -v $(IMG) || true
 	@rm $(PHONE) || true
 
+iclean:
+	@openstack $(FLAGS) stack delete --yes --wait $(INSTANCE) || true
+	@openstack $(FLAGS) image delete $(GLANCE_IMG) || true
+	@nova $(FLAGS) image-delete fleet $(GLANCE_IMG) || true
+	@test -f $(IMG) && rm -v $(IMG) || true
+	@rm $(PHONE) || true
+
 check:
 	@test '$(KEY_NAME)'
 	@test '$(PUB_KEY)'
