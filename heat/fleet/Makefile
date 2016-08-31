@@ -81,6 +81,7 @@ check_versions:
 	curl -Ifk $(BUCKET)/cni/$(CNI_VERSION)
 	curl -Ifk $(BUCKET)/netenv/$(NETENV_VERSION)
 	curl -Ifk $(BUCKET)/torus/$(TORUS_VERSION)
+	curl -Ifk $(BUCKET)/calico/$(CALICO_VERSION)
 
 $(INSTANCE): check check_versions
 	@openstack --insecure stack output show instance instance_id -f json -c output_value || \
@@ -103,7 +104,8 @@ $(INSTANCE): check check_versions
 	--parameter kubernetes_tar="$(BUCKET)/kubernetes/$(KUBERNETES_VERSION)" \
 	--parameter netenv_bin="$(BUCKET)/netenv/setup-network-environment" \
 	--parameter torus_tar="$(BUCKET)/torus/$(TORUS_VERSION)" \
-	--parameter aci_url="$(BUCKET)/aci" \
+	--parameter calico_tar="$(BUCKET)/calico/$(CALICO_VERSION)" \
+	--parameter bucket_root_url="$(BUCKET)" \
 	--parameter ssh_authorized_keys="$(PUB_KEY)" \
 	--parameter ntp="$(NTP)" \
 	--parameter ntpfall="$(NTPFALL)" \

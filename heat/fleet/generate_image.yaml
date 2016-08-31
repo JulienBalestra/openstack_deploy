@@ -284,6 +284,26 @@ resources:
               [Install]
               WantedBy=multi-user.target
 
+          - path: /etc/systemd/system/inventory.service
+            permissions: 0644
+            content: |
+              [Unit]
+              After=etcd.service
+              Requires=etcd.service
+
+              [Service]
+              SyslogIdentifier=%p
+              EnvironmentFile=/etc/bucket_urls
+              Environment=BIN=/usr/bin/inventory
+              ExecStartPre=/usr/bin/curl -Lfk ${BUCKET_URL}/inventory/inventory -o $BIN
+              ExecStartPre=/bin/chmod 755 $BIN
+              ExecStart=/usr/bin/inventory
+              Restart=always
+              RestartSec=15s
+
+              [X-Fleet]
+              Global=true
+
           - path: /etc/systemd/system/flanneld.service
             permissions: 0644
             content: |
@@ -339,7 +359,7 @@ resources:
 
               [Service]
               SyslogIdentifier=%p
-              EnvironmentFile=/etc/aci_url
+              EnvironmentFile=/etc/bucket_urls
               Environment=SKYDNS_ADDR=0.0.0.0:53
               ExecStartPre=/usr/bin/rkt --insecure-options=all fetch ${ACI_URL}/%p.aci
               ExecStartPre=/usr/bin/etcdctl set /skydns/config \
@@ -407,6 +427,34 @@ resources:
               [Install]
               WantedBy=multi-user.target
 
+          - path: /etc/systemd/system/calico-node.service
+            permissions: 0644
+            content: |
+              [Unit]
+              After=etcd.service
+              Requires=etcd.service
+
+              [Service]
+              EnvironmentFile=/etc/network-environment
+              EnvironmentFile=/etc/bucket_urls
+              ExecStartPre=/bin/mkdir -p /var/run/calico
+              ExecStartPre=/usr/bin/curl -Ifk ${ACI_URL}/%p.aci
+              ExecStartPre=/usr/bin/rkt fetch --insecure-options=all ${ACI_URL}/%p.aci
+              ExecStartPre=/usr/bin/rkt gc --grace-period=0
+              ExecStart=/usr/bin/rkt run \
+                --stage1-from-dir=stage1-fly.aci \
+                --net=host \
+                --set-env=ETCD_AUTHORITY=127.0.0.1:2379 \
+                --set-env=FELIX_ETCDADDR=127.0.0.1:2379 \
+                --set-env=FELIX_ETCDSCHEME=http \
+                --set-env=IP=${DEFAULT_IPV4} \
+                --volume=birdctl,kind=host,source=/var/run/calico,readOnly=false \
+                --mount volume=birdctl,target=/var/run/calico \
+                quay.io/calico/node:v0.21.0
+
+              [Install]
+              WantedBy=multi-user.target
+
           - path: /lib/systemd/system/docker.socket
             permissions: 0644
             content: |
@@ -434,6 +482,17 @@ resources:
                   }
               }
 
+          - path: /etc/rkt/net.d/20-calico.conf
+            permissions: 0644
+            content: |
+              {
+                  "name": "calico",
+                  "type": "calico",
+                  "ipam": {
+                    "type": "calico-ipam"
+                  }
+              }
+
           - path: /etc/update-motd.d/20-usage
             permissions: 0655
             content: |
@@ -442,14 +501,15 @@ resources:
               LINE="--------"
               printf "\n${LINE}\n uptime:\n$(uptime)\n${LINE}\n"
 
-          - path: /etc/aci_url
+          - path: /etc/bucket_urls
             permissions: 0644
             content:
               str_replace:
                 template: |
-                  ACI_URL=__aci_url__
+                  BUCKET_URL=__bucket_root_url__
+                  ACI_URL=__bucket_root_url__/aci
                 params:
-                  __aci_url__: { get_param: aci_url }
+                  __bucket_root_url__: { get_param: bucket_root_url }
 
           - path: /etc/systemd/timesyncd.conf
             permissions: 0644
@@ -536,7 +596,7 @@ resources:
 
               [Service]
               SyslogIdentifier=%p
-              EnvironmentFile=/etc/aci_url
+              EnvironmentFile=/etc/bucket_urls
               EnvironmentFile=/etc/network-environment
               Environment=DB_FOLDER=/var/lib/jds
               Environment=SINCE_DB=/var/lib/jds/sincedb
@@ -662,6 +722,21 @@ resources:
           - tar -xzvf /opt/cni/cni.tar.gz --strip-components=1
           - ln -s /opt/cni/cnitool /usr/bin/cnitool
           - rm -v /opt/cni/cni.tar.gz
+
+          - mkdir -v /tmp/calico_install
+          - mkdir -pv /usr/lib/rkt/plugins/net
+          - cd -P /tmp/calico_install
+          - [curl, -L, {get_param: insecure}, {get_param: calico_tar}, -o, /tmp/calico_install/calico.tar.gz]
+          - tar -xzvf calico.tar.gz
+          - mv -v /tmp/calico_install/calico /opt/cni/calico
+          - mv -v /tmp/calico_install/calico-ipam /opt/cni/calico-ipam
+          - mv -v /tmp/calico_install/calicoctl /usr/bin/calicoctl
+          - ln -s /opt/cni/calico /etc/rkt/net.d/calico
+          - ln -s /opt/cni/calico /usr/lib/rkt/plugins/net/calico
+          - ln -s /opt/cni/calico-ipam /usr/lib/rkt/plugins/net/calico-ipam
+          - ln -s /opt/cni/calico-ipam /etc/rkt/net.d/calico-ipam
+          - chmod -R +x /opt/cni
+          - chmod +x /usr/bin/calicoctl
 
           - mkdir -p /tmp/kubernetes_install
           - cd -P /tmp/kubernetes_install
@@ -825,9 +900,13 @@ parameters:
     type: string
     description: "https://get.docker.com/builds/Linux/x86_64/docker-1.11.0.tgz"
 
-  aci_url:
+  calico_tar:
     type: string
-    description: "https://object-store.api/v1/AUTH_token/aci/"
+    description: "https://github.com/projectcalico/calico-cni/releases"
+
+  bucket_root_url:
+    type: string
+    description: "https://object-store.api/v1/AUTH_token/"
 
   netenv_bin:
     type: string

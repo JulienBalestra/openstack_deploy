@@ -6,6 +6,8 @@ export FLANNEL_VERSION=flannel.tar.gz   # quay.io/coreos/flannel:0.5.5
 
 export TORUS_VERSION=torus_v0.1.1_linux_386.tar.gz
 
+export CALICO_VERSION=calico_v1.4.0-rc3.tar.gz
+
 export DOCKER_VERSION=docker-1.11.2.tgz
 
 # Un-versioned by K8s Github releases

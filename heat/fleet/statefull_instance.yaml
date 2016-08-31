@@ -126,7 +126,7 @@ resources:
 
               [Service]
               SyslogIdentifier=%p
-              EnvironmentFile=/etc/aci_url
+              EnvironmentFile=/etc/bucket_urls
               Environment=ZOO_VOLUMES=/var/lib/zookeeper
               ExecStartPre=/usr/bin/curl -Ifk ${ACI_URL}/zookeeper.aci
               ExecStartPre=-/bin/rm -v /tmp/%p%i
@@ -179,7 +179,7 @@ resources:
 
               [Service]
               SyslogIdentifier=%p
-              EnvironmentFile=/etc/aci_url
+              EnvironmentFile=/etc/bucket_urls
               EnvironmentFile=/etc/network-environment
               Environment=KAFKA_CONF=/var/lib/kafka/conf
               ExecStartPre=/usr/bin/curl -Ifk ${ACI_URL}/%p.aci
@@ -315,7 +315,7 @@ resources:
 
               [Service]
               SyslogIdentifier=%p
-              EnvironmentFile=/etc/aci_url
+              EnvironmentFile=/etc/bucket_urls
               Environment=ES_DATA=/var/lib/elasticsearch/data
               ExecStartPre=/usr/bin/curl -Ifk ${ACI_URL}/%p.aci
               ExecStartPre=-/bin/rm -v /tmp/%p%i

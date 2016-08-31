@@ -213,7 +213,7 @@ resources:
 
               [Service]
               SyslogIdentifier=%p
-              EnvironmentFile=/etc/aci_url
+              EnvironmentFile=/etc/bucket_urls
               Environment=TRAEFIK_CONF=/etc/traefik/
               ExecStartPre=/usr/bin/curl -Ifk ${ACI_URL}/%p.aci
               ExecStartPre=-/bin/rm -v /tmp/%p%i

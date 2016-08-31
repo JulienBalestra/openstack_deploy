@@ -113,7 +113,7 @@ resources:
 
               [Service]
               SyslogIdentifier=%p
-              EnvironmentFile=/etc/aci_url
+              EnvironmentFile=/etc/bucket_urls
               EnvironmentFile=/etc/network-environment
               Environment=DNS_SEARCH=kafka.skydns.local
               Environment=LOGSTASH_CONF_SRC=/var/lib/logstash
@@ -263,7 +263,7 @@ resources:
 
               [Service]
               SyslogIdentifier=%p
-              EnvironmentFile=/etc/aci_url
+              EnvironmentFile=/etc/bucket_urls
               EnvironmentFile=/etc/network-environment
               Environment=KIBANA_CONF=/var/lib/kibana/
               ExecStartPre=/usr/bin/curl -Ifk ${ACI_URL}/%p.aci
@@ -316,11 +316,12 @@ resources:
 
               [Service]
               SyslogIdentifier=%p
-              EnvironmentFile=/etc/aci_url
+              EnvironmentFile=/etc/bucket_urls
               Environment=TRAEFIK_CONF=/etc/traefik/
               ExecStartPre=/usr/bin/curl -Ifk ${ACI_URL}/%p.aci
               ExecStartPre=-/bin/rm -v /tmp/%p%i
-              ExecStartPre=/bin/mkdir -pv $TRAEFIK_CONF
+              ExecStartPre=-/bin/mkdir -pv $TRAEFIK_CONF
+              ExecStartPre=/usr/bin/etcdctl mkdir /traefik
               ExecStartPre=/usr/bin/rkt --insecure-options=all fetch ${ACI_URL}/%p.aci
               ExecStartPre=-/usr/bin/rkt gc --grace-period=0s %p
               ExecStart=/usr/bin/rkt run \
@@ -406,6 +407,32 @@ resources:
               MachineMetadata="role=worker" "state=stateless"
               Conflicts=kibana-confd@*
 
+          - path: /etc/systemd/system/fleet-inventory.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Requires=etcd.service fleet.service
+              After=etcd.service fleet.service
+
+              [Service]
+              SyslogIdentifier=%p
+              WorkingDirectory=/etc/systemd/system/
+              Environment=UNIT=inventory.service
+              Environment=UNIT_NAME=inventory
+
+              ExecStartPre=/usr/bin/etcdctl set /traefik/backends/${UNIT_NAME}/servers/server0/url 'http://127.0.0.1:5000'
+              ExecStartPre=/usr/bin/etcdctl set /traefik/backends/${UNIT_NAME}/servers/server0/weight '1'
+
+              ExecStartPre=/usr/bin/etcdctl set /traefik/frontends/${UNIT_NAME}/entrypoints 'http'
+              ExecStartPre=/usr/bin/etcdctl set /traefik/frontends/${UNIT_NAME}/priority '1'
+              ExecStartPre=/usr/bin/etcdctl set /traefik/frontends/${UNIT_NAME}/passHostHeader 'true'
+              ExecStartPre=/usr/bin/etcdctl set /traefik/frontends/${UNIT_NAME}/backend ${UNIT_NAME}
+              ExecStartPre=/usr/bin/etcdctl set /traefik/frontends/${UNIT_NAME}/routes/inventory/rule 'PathPrefix:/'
+
+              ExecStart=/usr/bin/fleetctl start $UNIT
+              Restart=always
+              RestartSec=30s
+
           - path: /etc/kibana/conf/conf.d/kibana.toml
             permissions: 0644
             content: |
@@ -456,6 +483,7 @@ resources:
           - ["systemctl", "start", "fleet-kibana@0.service"]
 
           - systemctl start traefik.service
+          - systemctl start fleet-inventory.service
 
         final_message: "The system is finally up, after $UPTIME seconds"
 
