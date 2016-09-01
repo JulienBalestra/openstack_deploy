@@ -65,6 +65,9 @@ Keep in mind the Debian 8 couldn't be used for Kubernetes (Rktnetes) because of 
 - etcd3 - https://github.com/coreos/etcd/releases
 - flannel - docker://quay.io/coreos/flannel
 - kubernetes
+- torus
+- calico
+- inventory
 
 - ACI_URL - bucket to store aci
 
