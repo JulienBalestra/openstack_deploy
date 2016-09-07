@@ -57,17 +57,7 @@ Keep in mind the Debian 8 couldn't be used for Kubernetes (Rktnetes) because of 
 
 **Over HTTP/s:**
 
-- confd - https://github.com/kelseyhightower/confd/releases
-- docker - https://github.com/docker/docker/releases
-- rkt - https://github.com/coreos/rkt/releases
-- fleet - https://github.com/coreos/fleet/releases
-- netenv - https://github.com/kelseyhightower/setup-network-environment/releases
-- etcd3 - https://github.com/coreos/etcd/releases
-- flannel - docker://quay.io/coreos/flannel
-- kubernetes
-- torus
-- calico
-- inventory
+Report to the versions file called by the Makefile rule check_versions
 
 - ACI_URL - bucket to store aci
 

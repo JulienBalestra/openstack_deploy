@@ -11,7 +11,7 @@ export CALICO_VERSION=calico_v1.4.0-rc3.tar.gz
 export DOCKER_VERSION=docker-1.11.2.tgz
 
 # Un-versioned by K8s Github releases
-export KUBERNETES_VERSION=kubernetes-server-linux-amd64.tar.gz
+export KUBERNETES_VERSION=kubernetes-server-linux-amd64-v1.3.6.tar.gz
 
 export CNI_VERSION=cni-v0.3.0.tar.gz
 

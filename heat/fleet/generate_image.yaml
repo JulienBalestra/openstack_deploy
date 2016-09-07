@@ -443,7 +443,6 @@ resources:
               ExecStartPre=/usr/bin/rkt gc --grace-period=0
               ExecStart=/usr/bin/rkt run \
                 --stage1-from-dir=stage1-fly.aci \
-                --net=host \
                 --set-env=ETCD_AUTHORITY=127.0.0.1:2379 \
                 --set-env=FELIX_ETCDADDR=127.0.0.1:2379 \
                 --set-env=FELIX_ETCDSCHEME=http \
@@ -639,7 +638,7 @@ resources:
           - mv -v /tmp/docker_install/docker-containerd-ctr /usr/bin/docker-containerd-ctr
           - mv -v /tmp/docker_install/docker-containerd-shim /usr/bin/docker-containerd-shim
           - mv -v /tmp/docker_install/docker-runc /usr/bin/docker-runc
-          - rm -Rf /tmp/docker_install
+          - docker --version
 
           - systemctl daemon-reload
           - systemctl enable docker.socket
@@ -655,7 +654,6 @@ resources:
           - mkdir -p /var/lib/etcd
           - etcd --version
           - etcdctl --version
-          - rm -Rf /tmp/etcd_install
 
           - mkdir -v /tmp/fleet_install
           - [curl, -L, {get_param: insecure}, {get_param: fleet_tar}, -o, /tmp/fleet_install/fleet.tar.gz]
@@ -665,7 +663,6 @@ resources:
           - mv /tmp/fleet_install/fleetctl /usr/bin/fleetctl
           - fleetd --version
           - fleetctl --version
-          - rm -Rf /tmp/fleet_install
 
           - mkdir -v /tmp/rkt_install
           - mkdir -pv /usr/lib/rkt/stage1-images
@@ -683,7 +680,6 @@ resources:
           - [mv, -v, /tmp/rkt_install/stage1-fly.aci, /usr/lib/rkt/stage1-images/stage1-fly.aci]
           - [mv, -v, /tmp/rkt_install/bash_completion/rkt.bash, /usr/share/bash-completion/completions/rkt]
           - rkt version
-          - rm -Rf /tmp/rkt_install
           - groupadd rkt
 
           - [curl, -L, {get_param: insecure}, {get_param: confd_bin}, -o, /usr/bin/confd]
@@ -692,8 +688,7 @@ resources:
 
           - [curl, -L, {get_param: insecure}, {get_param: flannel_tar}, -o, /tmp/flannel.tar.gz]
           - docker load < /tmp/flannel.tar.gz
-          - rm -v /tmp/flannel.tar.gz
-          - docker inspect quay.io/coreos/flannel:0.5.5
+          - docker images
 
           - systemctl daemon-reload
           - systemctl enable rkt-metadata.service
@@ -714,14 +709,13 @@ resources:
           - mv -v torusblk /usr/bin/torusblk
           - mv -v torusctl /usr/bin/torusctl
           - mv -v torusd /usr/bin/torusd
-          - rm -Rf /tmp/torus_install
 
           - mkdir -v /opt/cni
           - [curl, -L, {get_param: insecure}, {get_param: cni_tar}, -o, /opt/cni/cni.tar.gz]
           - cd -P /opt/cni
           - tar -xzvf /opt/cni/cni.tar.gz --strip-components=1
           - ln -s /opt/cni/cnitool /usr/bin/cnitool
-          - rm -v /opt/cni/cni.tar.gz
+          - mv -v /opt/cni/cni.tar.gz /tmp
 
           - mkdir -v /tmp/calico_install
           - mkdir -pv /usr/lib/rkt/plugins/net
@@ -753,8 +747,6 @@ resources:
           - mv /tmp/kubernetes_install/server/bin/kubectl /usr/bin/kubectl
           - mv /tmp/kubernetes_install/server/bin/kubelet /usr/bin/kubelet
           - mv /tmp/kubernetes_install/server/bin/kubemark /usr/bin/kubemark
-          - rm -Rf /tmp/kubernetes_install
-          - cd -P /tmp
 
           - rm -v /etc/machine-id ; rm -v /var/lib/dbus/machine-id
           - touch /etc/machine-id ; touch /var/lib/dbus/machine-id
