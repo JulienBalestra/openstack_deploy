@@ -16,7 +16,11 @@
 * AutoScaling with nested Stack
 * LB without LBaaS prototype
 
-* OpenStack samples
+The lastest production ready stack is the heat/fleet called by
+ 
+    make -C heat/fleet instance
+    make -C heat/fleet image
+    make -C heat/fleet fleet
 
 ## Utilities
 
