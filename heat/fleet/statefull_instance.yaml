@@ -134,6 +134,7 @@ resources:
               ExecStartPre=/bin/mkdir -pv ${ZOO_VOLUMES}/data
               ExecStartPre=/usr/bin/rkt --insecure-options=all fetch ${ACI_URL}/zookeeper.aci
               ExecStart=/usr/bin/rkt run \
+                --net=flannel \
                 --uuid-file-save=/tmp/%p%i quay.io/julienbalestra/zookeeper \
                 --volume=volume-zookeeper-conf,kind=host,source=${ZOO_VOLUMES}/conf,readOnly=true \
                 --volume=volume-zookeeper-data,kind=host,source=${ZOO_VOLUMES}/data,readOnly=false
@@ -187,6 +188,7 @@ resources:
               ExecStartPre=-/bin/rm -v /tmp/%p%i
               ExecStartPre=/usr/bin/rkt --insecure-options=all fetch ${ACI_URL}/%p.aci
               ExecStart=/usr/bin/rkt run \
+                --net=flannel \
                 --uuid-file-save=/tmp/%p%i --dns=${DEFAULT_IPV4} --dns-search=%p.skydns.local quay.io/julienbalestra/%p \
                 --volume=volume-kafka-conf,kind=host,source=${KAFKA_CONF},readOnly=true \
                 --hostname="%p%i"
@@ -322,6 +324,7 @@ resources:
               ExecStartPre=/bin/mkdir -pv $ES_DATA
               ExecStartPre=/usr/bin/rkt --insecure-options=all fetch ${ACI_URL}/%p.aci
               ExecStart=/usr/bin/rkt run \
+                --net=flannel \
                 --uuid-file-save=/tmp/%p%i \
                 --hostname=%p%i \
                 --volume volume-usr-share-elasticsearch-data,kind=host,source=${ES_DATA} \

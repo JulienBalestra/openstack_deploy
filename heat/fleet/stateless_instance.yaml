@@ -126,6 +126,7 @@ resources:
               ExecStartPre=-/bin/mkdir -pv $LOGSTASH_CONF_SRC
               ExecStartPre=/usr/bin/rkt --insecure-options=all fetch ${ACI_URL}/%p.aci
               ExecStart=/usr/bin/rkt run \
+                --net=flannel \
                 --dns=${DEFAULT_IPV4} \
                 --dns-search=${DNS_SEARCH} \
                 --set-env=LOGSTASH_CONF=${LOGSTASH_CONF_DEST} \
@@ -276,6 +277,7 @@ resources:
               ExecStartPre=/usr/bin/etcdctl set /traefik/frontends/%p/routes/%p/rule 'PathPrefix:/'
 
               ExecStart=/usr/bin/rkt run \
+                --net=flannel \
                 --set-env=TINI_SUBREAPER=true \
                 --uuid-file-save=/tmp/%p%i \
                 --hostname=%p%i \
@@ -321,7 +323,7 @@ resources:
               ExecStartPre=/usr/bin/curl -Ifk ${ACI_URL}/%p.aci
               ExecStartPre=-/bin/rm -v /tmp/%p%i
               ExecStartPre=-/bin/mkdir -pv $TRAEFIK_CONF
-              ExecStartPre=/usr/bin/etcdctl mkdir /traefik
+              ExecStartPre=-/usr/bin/etcdctl mkdir /traefik
               ExecStartPre=/usr/bin/rkt --insecure-options=all fetch ${ACI_URL}/%p.aci
               ExecStartPre=-/usr/bin/rkt gc --grace-period=0s %p
               ExecStart=/usr/bin/rkt run \

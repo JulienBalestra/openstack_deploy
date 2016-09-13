@@ -538,7 +538,7 @@ resources:
             permissions: 0644
             content: |
               {
-                  "name": "default",
+                  "name": "flannel",
                   "type": "flannel",
                   "delegate": {
                     "isDefaultGateway": true,
@@ -604,11 +604,27 @@ resources:
                 echo 'give /tmp/basename_number as $2 == number/instance'
               fi
 
+              source /etc/network-environment
+              # Flannel policy allow a /24 for each host, cutting the last IP field allow to regex over it
+              PREFIX=$(echo $FLANNEL_1_IPV4 | cut -f1,2,3 -d '.')
+              if [ -z $PREFIX ]
+              then
+                echo "No flannel network"
+                PREFIX="[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}"
+              fi
+
               while true
               do
                 UUID=$(cat /tmp/$1$2)
                 STATUS=$(rkt status $UUID)
-                IP=$(echo $STATUS | grep -Eo '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}')
+                IP=$(echo $STATUS | grep -Eo "$PREFIX\.[0-9]{1,3}")
+
+                if [ $(echo -n $IP | wc -w) != 1 ]
+                then
+                  echo '$IP != 1'
+                  continue
+                fi
+
                 etcdctl set --ttl 60 /skydns/local/skydns/$1/${1}${2} "{\"host\": \"${IP}\"}"
 
                 if [ ${TRAEFIK_BACKEND_PORT} ]
