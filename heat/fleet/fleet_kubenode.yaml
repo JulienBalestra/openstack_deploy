@@ -83,6 +83,16 @@ resources:
           port_range_max: 179
           direction: ingress
         - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 4321
+          port_range_max: 4321
+          direction: ingress
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 40000
+          port_range_max: 40000
+          direction: ingress
+        - remote_ip_prefix: 0.0.0.0/0
           protocol: icmp
           direction: ingress
 

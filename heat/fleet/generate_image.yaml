@@ -130,7 +130,7 @@ resources:
         preserve_hostname: false
         manage_etc_hosts: true
         package_update: true
-        package_upgrade: true
+        package_upgrade: false
         packages:
          - curl
          - jq
@@ -176,6 +176,21 @@ resources:
 
               cat << EOF | tee /etc/fleet-environment
               # FLEET_METADATA="key=value"
+              EOF
+
+          - path: /opt/bin/setup-torus-environment
+            permissions: 0755
+            content: |
+              #!/usr/bin/env bash
+
+              set -e ; set -o pipefail
+
+              MEMBERS=$(curl -f 127.0.0.1:2379/v2/members)
+
+              cat << EOF | tee /etc/torus-environment
+              ETCD_MEMBERS=$(echo -n $MEMBERS | jq -r '[.members[] | .clientURLs[0]] | join(",")')
+              ETCD_MEMBER_ZERO=$(echo -n $MEMBERS | jq -r ".members[0] | .clientURLs[0]")
+              TORUS_PEER_ADDRESS="http://${DEFAULT_IPV4}:40000"
               EOF
 
           - path: /etc/systemd/system/setup-etcd-environment.service
@@ -373,6 +388,56 @@ resources:
 
               [X-Fleet]
               Global=true
+
+          - path: /etc/systemd/system/setup-torus-environment.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=Torus
+
+              Requires=etcd.service setup-network-environment.service
+              After=etcd.service setup-network-environment.service
+
+              [Service]
+              SyslogIdentifier=%p
+              EnvironmentFile=/etc/network-environment
+              ExecStart=/opt/bin/setup-torus-environment
+
+              [Install]
+              WantedBy=multi-user.target
+
+          - path: /etc/systemd/system/torusd.service
+            permissions: 0644
+            content: |
+              [Unit]
+              Description=Torus
+
+              Requires=etcd.service setup-torus-environment.service
+              After=etcd.service setup-torus-environment.service
+
+              [Service]
+              SyslogIdentifier=%p
+
+              EnvironmentFile=/etc/torus-environment
+
+              Environment=STORAGE_SIZE=5GiB
+              Environment=DATA_DIR=/var/lib/torus
+
+              ExecStartPre=/usr/bin/du -sh $DATA_DIR
+              ExecStartPre=/bin/ls $DATA_DIR
+
+              ExecStartPre=-/usr/bin/torusctl -C $ETCD_MEMBER_ZERO init
+
+              ExecStart=/usr/bin/torusd \
+                --data-dir $DATA_DIR \
+                --peer-address http://0.0.0.0:40000 \
+                --size $STORAGE_SIZE
+
+              Restart=always
+              RestartSec=60s
+
+              [Install]
+              WantedBy=multi-user.target
 
           - path: /etc/systemd/system/setup-network-environment.service
             permissions: 0644
@@ -709,6 +774,7 @@ resources:
           - mv -v torusblk /usr/bin/torusblk
           - mv -v torusctl /usr/bin/torusctl
           - mv -v torusd /usr/bin/torusd
+          - mkdir -pv /var/lib/torus
 
           - mkdir -v /opt/cni
           - [curl, -L, {get_param: insecure}, {get_param: cni_tar}, -o, /opt/cni/cni.tar.gz]

@@ -389,6 +389,8 @@ resources:
           - systemctl enable flanneld.service
           - systemctl enable fleet.socket
           - systemctl enable fleet.service
+          - systemctl enable setup-torus-environment.service
+          - systemctl enable torusd.service
           - systemctl enable fleet-skydns.service
 
           - systemctl start setup-etcd-environment.service
@@ -397,21 +399,17 @@ resources:
           - systemctl start flanneld.service
 
           - systemctl start setup-fleet-environment.service
+          - systemctl start setup-torus-environment.service
+
           - systemctl start fleet.service
+          - systemctl start torusd.service
 
           - systemctl start fleet-skydns.service
-
 
           - ["systemctl", "start", "fleet-elasticsearch@0.service"]
           - ["systemctl", "start", "fleet-zookeeper@0.service"]
           - ["systemctl", "start", "fleet-kafka@0.service"]
-          - ["systemctl", "start", "fleet-logstash@0.service"]
-
           - systemctl start fleet-jds_kafka.service
-
-          - ["systemctl", "start", "fleet-kibana@0.service"]
-          - ["systemctl", "start", "fleet-traefik@0.service"]
-          - ["systemctl", "start", "fleet-traefik@1.service"]
 
         final_message: "The system is finally up, after $UPTIME seconds"
 
